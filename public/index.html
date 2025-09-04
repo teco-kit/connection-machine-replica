@@ -22,7 +22,30 @@
       <h1>CM2-Display-Control</h1>
       <div id="status">Connecting...</div>
     </div>
-    <div class="display" id="display"></div>
+    
+    <div class="workload-label">
+      Adjust Workload:
+      <div class="controls">
+        <input type="range" id="probabilitySlider" min="0" max="100" value="33" step="1">
+        <span id="probabilityValue">33%</span>
+      </div>
+    </div>
+    
+    <div class="speed-label">
+      Adjust Speed:
+      <div class="controls">
+        <input type="range" id="speedSlider" min="50" max="500" value="150" step="10">
+        <span id="speedValue">150ms</span>
+      </div>
+    </div>
+    
+    <div class="display" id="display">
+      <div class="instruction">
+        Draw on the Connection Machine below:
+      </div>
+      <div class="cube-grid" id="cube-grid">
+      </div>
+    </div>
   </div>
 
   <script src="main.js"></script>

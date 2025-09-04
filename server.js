@@ -48,9 +48,8 @@ function enterIdleState() {
     if (drawingTimeout) clearTimeout(drawingTimeout);
     if (tcpStreamTimeout) clearTimeout(tcpStreamTimeout);
     
-    // Use hybrid display that starts in animation mode
     if (!activeProcess || activeProcess.killed) {
-        activeProcess = runScript('./hybrid_display.py');
+        activeProcess = runScript('./CM2_animation_and_drawing.py');
     }
     // If process is already running, it will naturally return to animation mode
 }
@@ -74,7 +73,7 @@ function enterWebDrawingState() {
     // Keep the same hybrid process running - it will switch to drawing mode
     // when it receives drawing input
     if (!activeProcess || activeProcess.killed) {
-        activeProcess = runScript('./hybrid_display.py');
+        activeProcess = runScript('./CM2_animation_and_drawing.py');
     }
 }
 
@@ -141,7 +140,7 @@ wss.on('connection', (ws) => {
     // Start hybrid display if not running, but don't switch to drawing mode yet
     if (!activeProcess || activeProcess.killed) {
         console.log('Starting hybrid display for new client connection.');
-        activeProcess = runScript('./hybrid_display.py');
+        activeProcess = runScript('./CM2_animation_and_drawing.py');
         serverState = 'idle'; // Start in animation mode
     }
 

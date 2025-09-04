@@ -1,4 +1,4 @@
-const displayContainer = document.getElementById('display');
+const displayContainer = document.getElementById('cube-grid');
 const statusDiv = document.getElementById('status');
 
 const NUM_CUBES_X = 2;
@@ -9,6 +9,46 @@ const LED_ROWS_PER_CUBE = 32;
 let isDrawing = false;
 let lastLedElement = null;
 
+// --- Probability Control ---
+const probabilitySlider = document.getElementById('probabilitySlider');
+const probabilityValue = document.getElementById('probabilityValue');
+
+// Update probability display and send to server
+function updateProbability() {
+    const probability = probabilitySlider.value;
+    probabilityValue.textContent = `${probability}%`;
+    
+    // Send probability update to server
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'probability',
+            value: probability / 100.0  // Convert to 0.0-1.0 range
+        }));
+    }
+}
+
+probabilitySlider.addEventListener('input', updateProbability);
+
+// --- Speed Control ---
+const speedSlider = document.getElementById('speedSlider');
+const speedValue = document.getElementById('speedValue');
+
+// Update speed display and send to server
+function updateSpeed() {
+    const speed = speedSlider.value;
+    speedValue.textContent = `${speed}ms`;
+    
+    // Send speed update to server
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'speed',
+            value: speed / 1000.0  // Convert to seconds
+        }));
+    }
+}
+
+speedSlider.addEventListener('input', updateSpeed);
+
 // --- WebSocket Connection ---
 const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
 const ws = new WebSocket(`${protocol}://${window.location.host}`);
@@ -16,6 +56,9 @@ const ws = new WebSocket(`${protocol}://${window.location.host}`);
 ws.onopen = () => {
     statusDiv.textContent = 'Connected';
     statusDiv.style.background = '#27ae60';
+    // Send initial values
+    updateProbability();
+    updateSpeed();
 };
 ws.onclose = () => {
     statusDiv.textContent = 'Disconnected';
@@ -83,24 +126,23 @@ function createFullDisplay() {
 function handleDraw(clientX, clientY) {
     const element = document.elementFromPoint(clientX, clientY);
     if (element && element.classList.contains('led') && element !== lastLedElement) {
-        lastLedElement = element;
-        const { x, y } = element.dataset;
-
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ x: parseInt(x), y: parseInt(y) }));
-        }
-
-        // Remove class if already present to restart animation
-        element.classList.remove('drawn-on');
-        // Force reflow to restart animation
-        element.offsetHeight;
+        const x = parseInt(element.dataset.x);
+        const y = parseInt(element.dataset.y);
+        
+        ws.send(JSON.stringify({ type: 'draw', x, y }));
+        
         element.classList.add('drawn-on');
+        lastLedElement = element;
     }
 }
 
 function startDrawing(e) {
-    isDrawing = true;
+    // Only start drawing if touching an LED element
     const touch = e.touches ? e.touches[0] : e;
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('led')) return;
+    
+    isDrawing = true;
     handleDraw(touch.clientX, touch.clientY);
 }
 
@@ -111,22 +153,30 @@ function stopDrawing() {
 
 function draw(e) {
     if (!isDrawing) return;
-    e.preventDefault();
+    
+    // Only prevent default if we're actually drawing on LEDs
     const touch = e.touches ? e.touches[0] : e;
-    handleDraw(touch.clientX, touch.clientY);
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (element && element.classList.contains('led')) {
+        e.preventDefault();
+        handleDraw(touch.clientX, touch.clientY);
+    }
 }
 
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
     createFullDisplay();
 
-    document.addEventListener('mousedown', startDrawing);
+    // Add event listeners only to the LED grid container
+    displayContainer.addEventListener('mousedown', startDrawing);
+    displayContainer.addEventListener('mousemove', draw);
+    
+    displayContainer.addEventListener('touchstart', startDrawing, { passive: false });
+    displayContainer.addEventListener('touchmove', draw, { passive: false });
+    
+    // Global listeners for stopping drawing
     document.addEventListener('mouseup', stopDrawing);
     document.addEventListener('mouseleave', stopDrawing);
-    document.addEventListener('mousemove', draw);
-
-    document.addEventListener('touchstart', startDrawing, { passive: false });
     document.addEventListener('touchend', stopDrawing);
     document.addEventListener('touchcancel', stopDrawing);
-    document.addEventListener('touchmove', draw, { passive: false });
 });

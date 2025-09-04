@@ -7,7 +7,6 @@ body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  touch-action: none;
 }
 
 .container {
@@ -33,7 +32,7 @@ body, html {
 
 h1 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.1rem;
 }
 
 #status {
@@ -43,13 +42,119 @@ h1 {
   font-size: 0.9rem;
 }
 
+.workload-label {
+  position: absolute;
+  top: 110px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 10;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  color: #8a8a8a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
+.speed-label {
+  position: absolute;
+  top: 150px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 10;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  color: #8a8a8a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 8px 15px;
+  border-radius: 15px;
+  backdrop-filter: blur(5px);
+  touch-action: auto; /* Allow normal touch interactions in controls */
+}
+
+.instruction {
+  margin-bottom: 2vmin;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  color: #8a8a8a;
+}
+
+.controls label {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.controls input[type="range"] {
+  width: 150px;
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+  touch-action: auto; /* Allow slider dragging */
+}
+
+.controls input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #8a8a8a;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.controls input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #8a8a8a;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+#probabilityValue {
+  font-size: 0.8rem;
+  min-width: 35px;
+  text-align: center;
+  color: #ffffff;
+  font-weight: bold;
+}
+
 .display {
   flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 220px 10px 10px 10px;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.cube-grid {
   display: grid;
   grid-template-columns: repeat(2, auto);
   grid-template-rows: repeat(2, auto);
   gap: 15px;
-  padding: 60px 10px 20px 10px;
   justify-content: center;
   align-content: center;
 }
@@ -63,32 +168,33 @@ h1 {
   background-color: transparent; /* No background color so black shows through */
   border-radius: 8px;
   aspect-ratio: 1; /* Keep square shape */
-  width: min(46.5vw, calc((100vh - 100px) / 2 - 10px));
-  height: min(46.5vw, calc((100vh - 100px) / 2 - 10px));
+  width: min(46.5vw, calc((100vh - 220px) / 2 - 10px));
+  height: min(46.5vw, calc((100vh - 220px) / 2 - 10px));
   justify-self: center;
   align-self: center;
+  touch-action: none; /* Prevent scrolling and zooming on LED areas */
 }
 
 .column {
   display: flex;
   flex-direction: column;
-  margin-right: min(0.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 200));
+  margin-right: min(0.2vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 200));
 }
 
 .column:first-child {
-  margin-left: min(2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 20));
+  margin-left: min(2vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 20));
 }
 
 .column:nth-child(8) {
-  margin-right: min(4.5vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 9));
+  margin-right: min(4.5vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 9));
 }
 
 .column:nth-child(10) {
-  margin-left: min(4.5vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 9));
+  margin-left: min(4.5vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 9));
 }
 
 .column:last-of-type {
-  margin-right: min(2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 20));
+  margin-right: min(2vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 20));
 }
 
 
@@ -109,12 +215,12 @@ h1 {
 }
 
 .led {
-  width: min(1.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 40));
-  height: min(1.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 40));
-  margin-top: min(0.1vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 400));
-  margin-bottom: min(0.1vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 400));
-  margin-left: min(0.3vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 160));
-  margin-right: min(0.3vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 160));
+  width: min(1.2vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 40));
+  height: min(1.2vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 40));
+  margin-top: min(0.1vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 400));
+  margin-bottom: min(0.1vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 400));
+  margin-left: min(0.3vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 160));
+  margin-right: min(0.3vmin, calc(min(46.5vw, (100vh - 220px) / 2 - 10px) / 160));
   background-color: #300;
   border-radius: 30%; /* LED with rounded corners (30%) */
   box-shadow: 0 0 2px #600 inset;
