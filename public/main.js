@@ -10,22 +10,22 @@ let isDrawing = false;
 let lastLedElement = null;
 
 // --- WebSocket Connection ---
-//const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-//const ws = new WebSocket(`${protocol}://${window.location.host}`);
+const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const ws = new WebSocket(`${protocol}://${window.location.host}`);
 
-// ws.onopen = () => {
-//     statusDiv.textContent = 'Connected';
-//     statusDiv.style.background = '#27ae60';
-// };
-// ws.onclose = () => {
-//     statusDiv.textContent = 'Disconnected';
-//     statusDiv.style.background = '#c0392b';
-// };
-// ws.onerror = (err) => {
-//     console.error('WebSocket error:', err);
-//     statusDiv.textContent = 'Error';
-//     statusDiv.style.background = '#c0392b';
-// };
+ws.onopen = () => {
+    statusDiv.textContent = 'Connected';
+    statusDiv.style.background = '#27ae60';
+};
+ws.onclose = () => {
+    statusDiv.textContent = 'Disconnected';
+    statusDiv.style.background = '#c0392b';
+};
+ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    statusDiv.textContent = 'Error';
+    statusDiv.style.background = '#c0392b';
+};
 
 // --- Grid Creation ---
 function createLed(logicalX, logicalY) {
@@ -80,23 +80,23 @@ function createFullDisplay() {
 }
 
 // --- Drawing Logic ---
-// function handleDraw(clientX, clientY) {
-//     const element = document.elementFromPoint(clientX, clientY);
-//     if (element && element.classList.contains('led') && element !== lastLedElement) {
-//         lastLedElement = element;
-//         const { x, y } = element.dataset;
+function handleDraw(clientX, clientY) {
+    const element = document.elementFromPoint(clientX, clientY);
+    if (element && element.classList.contains('led') && element !== lastLedElement) {
+        lastLedElement = element;
+        const { x, y } = element.dataset;
 
-//         if (ws.readyState === WebSocket.OPEN) {
-//             ws.send(JSON.stringify({ x: parseInt(x), y: parseInt(y) }));
-//         }
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ x: parseInt(x), y: parseInt(y) }));
+        }
 
-//         // Remove class if already present to restart animation
-//         element.classList.remove('drawn-on');
-//         // Force reflow to restart animation
-//         element.offsetHeight;
-//         element.classList.add('drawn-on');
-//     }
-// }
+        // Remove class if already present to restart animation
+        element.classList.remove('drawn-on');
+        // Force reflow to restart animation
+        element.offsetHeight;
+        element.classList.add('drawn-on');
+    }
+}
 
 function startDrawing(e) {
     isDrawing = true;

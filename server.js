@@ -9,13 +9,16 @@ const path = require('path');
 const HTTP_PORT = 80;
 const TCP_PORT = 1337;
 const IDLE_TIMEOUT_MS = 60000;
+const DRAWING_TIMEOUT_MS = 5000; // 5 seconds after last drawing
 
 // --- State Management ---
 let serverState = 'booting';
 let activeProcess = null;
 let tcpStreamTimeout = null;
-let webDrawTimeout = null;
+let drawingTimeout = null;
 let webSocketClients = 0;
+let hasReceivedDrawingInput = false;
+let isInDrawingMode = false;
 
 // --- Process Management ---
 function runScript(scriptName) {
@@ -38,29 +41,41 @@ function runScript(scriptName) {
 
 // --- State Transitions ---
 function enterIdleState() {
-    if (serverState === 'idle') return;
-    console.log('Entering idle state.');
+    console.log('Entering idle/animation state.');
     serverState = 'idle';
-    if (webDrawTimeout) clearTimeout(webDrawTimeout);
+    hasReceivedDrawingInput = false;
+    isInDrawingMode = false;
+    if (drawingTimeout) clearTimeout(drawingTimeout);
     if (tcpStreamTimeout) clearTimeout(tcpStreamTimeout);
-    activeProcess = runScript('./CM2_animation.py');
+    
+    // Use hybrid display that starts in animation mode
+    if (!activeProcess || activeProcess.killed) {
+        activeProcess = runScript('./hybrid_display.py');
+    }
+    // If process is already running, it will naturally return to animation mode
 }
 
 function enterTcpStreamingState() {
     console.log('Entering TCP streaming state.');
     serverState = 'tcp_streaming';
-    if (webDrawTimeout) clearTimeout(webDrawTimeout);
+    hasReceivedDrawingInput = false;
+    isInDrawingMode = false;
+    if (drawingTimeout) clearTimeout(drawingTimeout);
     activeProcess = runScript('./stream_handler.py');
     resetTcpStreamTimeout();
 }
 
 function enterWebDrawingState() {
-    if (serverState === 'web_drawing') return;
-    console.log('Entering web drawing state.');
+    console.log('Switching to drawing mode within hybrid display.');
     serverState = 'web_drawing';
+    isInDrawingMode = true;
     if (tcpStreamTimeout) clearTimeout(tcpStreamTimeout);
-    activeProcess = runScript('./web_draw.py');
-    resetWebDrawTimeout();
+    
+    // Keep the same hybrid process running - it will switch to drawing mode
+    // when it receives drawing input
+    if (!activeProcess || activeProcess.killed) {
+        activeProcess = runScript('./hybrid_display.py');
+    }
 }
 
 function resetTcpStreamTimeout() {
@@ -71,13 +86,16 @@ function resetTcpStreamTimeout() {
     }, IDLE_TIMEOUT_MS);
 }
 
-function resetWebDrawTimeout() {
-    if (webDrawTimeout) clearTimeout(webDrawTimeout);
-    webDrawTimeout = setTimeout(() => {
-        console.log('Web drawing inactivity timeout reached.');
-        wss.clients.forEach(ws => ws.close()); // Disconnect all clients
-        enterIdleState();
-    }, IDLE_TIMEOUT_MS);
+function resetDrawingTimeout() {
+    if (drawingTimeout) clearTimeout(drawingTimeout);
+    drawingTimeout = setTimeout(() => {
+        console.log('Drawing inactivity timeout reached (3s). Returning to animation.');
+        hasReceivedDrawingInput = false;
+        isInDrawingMode = false;
+        // Don't kill the process, just let it return to animation mode naturally
+        // by not sending any more drawing inputs
+        serverState = 'idle';
+    }, DRAWING_TIMEOUT_MS);
 }
 
 // --- Express Web Server ---
@@ -117,25 +135,49 @@ const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
-    if (webSocketClients === 0) {
-        enterWebDrawingState(); // First client triggers the state change
-    }
     webSocketClients++;
     console.log(`Web client connected. Total clients: ${webSocketClients}`);
+    
+    // Start hybrid display if not running, but don't switch to drawing mode yet
+    if (!activeProcess || activeProcess.killed) {
+        console.log('Starting hybrid display for new client connection.');
+        activeProcess = runScript('./hybrid_display.py');
+        serverState = 'idle'; // Start in animation mode
+    }
 
     ws.on('message', (message) => {
-        resetWebDrawTimeout(); // Reset inactivity timer on any message
-        if (serverState === 'web_drawing' && activeProcess && activeProcess.stdin) {
-            activeProcess.stdin.write(message + '\n');
+        // First drawing input received - switch to drawing mode
+        if (!isInDrawingMode) {
+            console.log('First drawing input received. Entering drawing mode.');
+            enterWebDrawingState();
+        }
+        
+        // Reset drawing timeout on every drawing input
+        resetDrawingTimeout();
+        
+        // Send drawing data to hybrid display
+        if (activeProcess && activeProcess.stdin && !activeProcess.killed) {
+            try {
+                activeProcess.stdin.write(message + '\n');
+            } catch (err) {
+                console.error('Error writing to hybrid display:', err.message);
+            }
         }
     });
 
     ws.on('close', () => {
         webSocketClients--;
         console.log(`Web client disconnected. Total clients: ${webSocketClients}`);
-        if (webSocketClients === 0 && serverState === 'web_drawing') {
+        
+        // Don't immediately return to idle - let the 3-second timer handle it
+        // This allows multiple people to connect/disconnect without interrupting
+        if (webSocketClients === 0) {
             console.log('Last web client disconnected.');
-            enterIdleState();
+            if (!isInDrawingMode) {
+                // No drawing ever happened, continue with animation
+                console.log('No drawing occurred, continuing animation.');
+            }
+            // If drawing was happening, the drawingTimeout will handle the transition
         }
     });
 
