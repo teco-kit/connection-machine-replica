@@ -1,0 +1,13 @@
+{
+  "name": "cm-server",
+  "version": "1.0.0",
+  "description": "Node.js server for the Connection Machine LED matrix.",
+  "main": "server.js",
+  "scripts": {
+    "start": "sudo node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "ws": "^8.2.3"
+  }
+}

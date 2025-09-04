@@ -1,0 +1,126 @@
+body, html {
+  margin: 0;
+  padding: 0;
+  background-color: #000; /* Black background */
+  color: #fff;
+  font-family: 'Orbitron', sans-serif;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.container {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+#status {
+  padding: 8px 16px;
+  background: #333;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.display {
+  flex-grow: 1;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  grid-template-rows: repeat(2, auto);
+  gap: 15px;
+  padding: 60px 10px 20px 10px;
+  justify-content: center;
+  align-content: center;
+}
+
+.cube {
+  display: flex;
+  justify-content: center; /* Center the LED columns horizontally */
+  align-items: center;     /* Center the LED columns vertically */
+  border: 2px solid #fff;  /* White frame */
+  padding: 0;
+  background-color: transparent; /* No background color so black shows through */
+  border-radius: 8px;
+  aspect-ratio: 1; /* Keep square shape */
+  width: min(46.5vw, calc((100vh - 100px) / 2 - 10px));
+  height: min(46.5vw, calc((100vh - 100px) / 2 - 10px));
+  justify-self: center;
+  align-self: center;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  margin-right: min(0.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 200));
+}
+
+.column:first-child {
+  margin-left: min(2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 20));
+}
+
+.column:nth-child(8) {
+  margin-right: min(4.5vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 9));
+}
+
+.column:nth-child(10) {
+  margin-left: min(4.5vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 9));
+}
+
+.column:last-of-type {
+  margin-right: min(2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 20));
+}
+
+
+
+@keyframes ledFlash {
+  0% { 
+    background-color: #300;
+    box-shadow: 0 0 2px #600 inset;
+  }
+  20% { 
+    background-color: red;
+    box-shadow: 0 0 5px red;
+  }
+  100% { 
+    background-color: #300;
+    box-shadow: 0 0 2px #600 inset;
+  }
+}
+
+.led {
+  width: min(1.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 40));
+  height: min(1.2vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 40));
+  margin-top: min(0.1vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 400));
+  margin-bottom: min(0.1vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 400));
+  margin-left: min(0.3vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 160));
+  margin-right: min(0.3vmin, calc(min(46.5vw, (100vh - 100px) / 2 - 10px) / 160));
+  background-color: #300;
+  border-radius: 30%; /* LED with rounded corners (30%) */
+  box-shadow: 0 0 2px #600 inset;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+
+.led.drawn-on {
+  animation: ledFlash 1s ease-out forwards;
+}
