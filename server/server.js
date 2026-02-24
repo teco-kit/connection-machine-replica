@@ -10,6 +10,7 @@ const HTTP_PORT = 80;
 const TCP_PORT = 1337;
 const IDLE_TIMEOUT_MS = 60000;
 const DRAWING_TIMEOUT_MS = 5000; // 5 seconds after last drawing
+const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 
 // --- State Management ---
 let serverState = 'booting';
@@ -17,7 +18,6 @@ let activeProcess = null;
 let tcpStreamTimeout = null;
 let drawingTimeout = null;
 let webSocketClients = 0;
-let hasReceivedDrawingInput = false;
 let isInDrawingMode = false;
 
 // --- Process Management ---
@@ -26,8 +26,9 @@ function runScript(scriptName) {
         activeProcess.kill('SIGTERM');
         activeProcess = null;
     }
-    console.log(`Starting script: ${scriptName}`);
-    const process = spawn('sudo', ['python3', scriptName]);
+    const scriptPath = path.join(SCRIPTS_DIR, scriptName);
+    console.log(`Starting script: ${scriptPath}`);
+    const process = spawn('sudo', ['python3', scriptPath]);
 
     process.on('error', (err) => console.error(`Failed to start script ${scriptName}:`, err));
     process.stderr.on('data', (data) => console.error(`Error from ${scriptName}: ${data}`));
@@ -43,13 +44,12 @@ function runScript(scriptName) {
 function enterIdleState() {
     console.log('Entering idle/animation state.');
     serverState = 'idle';
-    hasReceivedDrawingInput = false;
     isInDrawingMode = false;
     if (drawingTimeout) clearTimeout(drawingTimeout);
     if (tcpStreamTimeout) clearTimeout(tcpStreamTimeout);
     
     if (!activeProcess || activeProcess.killed) {
-        activeProcess = runScript('./CM2_animation_and_drawing.py');
+        activeProcess = runScript('CM2_animation_and_drawing.py');
     }
     // If process is already running, it will naturally return to animation mode
 }
@@ -57,10 +57,9 @@ function enterIdleState() {
 function enterTcpStreamingState() {
     console.log('Entering TCP streaming state.');
     serverState = 'tcp_streaming';
-    hasReceivedDrawingInput = false;
     isInDrawingMode = false;
     if (drawingTimeout) clearTimeout(drawingTimeout);
-    activeProcess = runScript('./stream_handler.py');
+    activeProcess = runScript('stream_handler.py');
     resetTcpStreamTimeout();
 }
 
@@ -73,7 +72,7 @@ function enterWebDrawingState() {
     // Keep the same hybrid process running - it will switch to drawing mode
     // when it receives drawing input
     if (!activeProcess || activeProcess.killed) {
-        activeProcess = runScript('./CM2_animation_and_drawing.py');
+        activeProcess = runScript('CM2_animation_and_drawing.py');
     }
 }
 
@@ -105,9 +104,8 @@ app.get('/hotspot-detect.html', (req, res) => {
     res.redirect('/');
 });
 
-app.get(['/generate_204', '/gen_204'], (req, res) => {
-    // Android probe: trigger portal by redirect
-    res.redirect('/');
+app.get(['/generate_204', '/gen_204', '/clients3.google.com/generate_204'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get(['/ncsi.txt', '/connecttest.txt'], (req, res) => {
@@ -140,7 +138,7 @@ wss.on('connection', (ws) => {
     // Start hybrid display if not running, but don't switch to drawing mode yet
     if (!activeProcess || activeProcess.killed) {
         console.log('Starting hybrid display for new client connection.');
-        activeProcess = runScript('./CM2_animation_and_drawing.py');
+        activeProcess = runScript('CM2_animation_and_drawing.py');
         serverState = 'idle'; // Start in animation mode
     }
 
