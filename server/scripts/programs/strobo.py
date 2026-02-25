@@ -17,23 +17,18 @@ FLASH_OFF_MS = 50   # milliseconds dark
 WHITE = rgb(255, 255, 255)
 
 def main():
-    display = CMDisplay(brightness=80)
+    with CMDisplay(brightness=80) as display:
+        try:
+            while True:
+                display.fill(WHITE)
+                display.show()
+                time.sleep(FLASH_ON_MS / 1000.0)
 
-    try:
-        while True:
-            display.fill(WHITE)
-            display.show()
-            time.sleep(FLASH_ON_MS / 1000.0)
-
-            display.fill(OFF)
-            display.show()
-            time.sleep(FLASH_OFF_MS / 1000.0)
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        display.fill(OFF)
-        display.show()
+                display.fill(OFF)
+                display.show()
+                time.sleep(FLASH_OFF_MS / 1000.0)
+        except KeyboardInterrupt:
+            pass
 
 if __name__ == '__main__':
     main()
