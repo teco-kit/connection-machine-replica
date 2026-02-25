@@ -1,0 +1,18 @@
+# wave_front.cstar
+# Eine laufende Sinuswelle ueber die Chip-Indizes.
+# Jeder Prozessor berechnet seine lokale Phase parallel.
+
+pvar float chip_id;
+pvar float phase;
+pvar float wave;
+
+repeat 320 {
+  forall {
+    chip_id = chip();
+    phase = (chip_id / 24.0) + (time() / 10.0);
+    wave = sin(phase);
+  }
+
+  led = wave > 0.75;
+  sleep 30;
+}

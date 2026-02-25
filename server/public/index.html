@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>CM2-Display-Control</title>
+  <title>Connection Machine 2</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <style>
     @font-face {
@@ -19,32 +19,52 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>CM2-Display-Control</h1>
+      <h1>Connection Machine 2</h1>
       <div id="status">Connecting...</div>
     </div>
-    
-    <div class="workload-label">
-      Adjust Workload:
-      <div class="controls">
-        <input type="range" id="probabilitySlider" min="0" max="100" value="33" step="1">
-        <span id="probabilityValue">33%</span>
-      </div>
-    </div>
-    
-    <div class="speed-label">
-      Adjust Speed:
-      <div class="controls">
-        <input type="range" id="speedSlider" min="50" max="500" value="150" step="10">
-        <span id="speedValue">150ms</span>
-      </div>
-    </div>
-    
+
     <div class="display" id="display">
-      <div class="instruction">
-        Draw on the Connection Machine below:
+      <div class="toolbar" id="toolbar">
+        <div class="program-selector" id="programSelector">
+          <button class="action-btn idle" id="idleBtn">Idle</button>
+          <select id="programSelect"></select>
+          <button class="action-btn run" id="runBtn">Run</button>
+        </div>
+        <div class="workload-label">
+          Idle Workload:
+          <div class="controls">
+            <input type="range" id="probabilitySlider" min="0" max="100" value="33" step="1">
+            <span id="probabilityValue">33%</span>
+          </div>
+        </div>
+        <div class="speed-label">
+          Idle Speed:
+          <div class="controls">
+            <input type="range" id="speedSlider" min="50" max="500" value="150" step="10">
+            <span id="speedValue">150ms</span>
+          </div>
+        </div>
       </div>
-      <div class="cube-grid" id="cube-grid">
+      <div class="grid-area">
+        <div class="instruction">
+          Draw on the CM2 with your finger below:
+        </div>
+        <div class="cube-grid" id="cube-grid">
+        </div>
       </div>
+    </div>
+
+    <div class="snake-controls" id="snakeControls" style="display:none;">
+      <div class="snake-score">Score: <span id="snakeScore">0</span></div>
+      <div class="dpad">
+        <button class="dpad-btn up" id="btnUp">&#9650;</button>
+        <div class="dpad-row">
+          <button class="dpad-btn left" id="btnLeft">&#9664;</button>
+          <button class="dpad-btn right" id="btnRight">&#9654;</button>
+        </div>
+        <button class="dpad-btn down" id="btnDown">&#9660;</button>
+      </div>
+      <div class="snake-hint">Use buttons or swipe to steer</div>
     </div>
   </div>
 

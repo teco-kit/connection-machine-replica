@@ -6,9 +6,11 @@ Fills every LED with white. Useful for checking dead pixels and power draw.
 Optional argument: update interval in seconds (default 2.0).
 """
 
+import os
 import sys
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from cm_display import CMDisplay, WHITE
 
 

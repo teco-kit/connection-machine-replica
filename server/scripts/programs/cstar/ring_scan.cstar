@@ -1,0 +1,30 @@
+# ring_scan.cstar
+# Demonstriert "while" und "if/else" im Front-End-Steuerfluss
+# plus datenparallele Auswertung je Prozessor.
+
+float frame;
+pvar float idx;
+pvar float pos;
+pvar float center;
+pvar float dist;
+pvar float width;
+
+frame = 0;
+while (frame < 260) {
+  if ((frame % 64) < 32) {
+    width = 2.0;
+  } else {
+    width = 5.0;
+  }
+
+  forall {
+    idx = chip();
+    pos = idx % 64;
+    center = frame % 64;
+    dist = abs(pos - center);
+  }
+
+  led = dist < width;
+  sleep 28;
+  frame = frame + 1;
+}

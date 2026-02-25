@@ -1,0 +1,21 @@
+# checker_pulse.cstar
+# Schachbrettmuster mit Zeitumschaltung.
+# "where" schraenkt den aktiven Prozessorsatz auf die gerade gewaehlte Paritaet ein.
+
+pvar float chip_id;
+pvar float parity;
+pvar float tick;
+
+repeat 280 {
+  forall {
+    chip_id = chip();
+    parity = (chip_id % 2);
+    tick = (time() // 8) % 2;
+  }
+
+  where (parity == tick) {
+    led = true;
+  }
+
+  sleep 45;
+}

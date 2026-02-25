@@ -1,0 +1,64 @@
+# mandelbrot_zoom.cstar
+# Animierter Zoom in die Mandelbrot-Menge.
+# Pro Frame berechnet jeder Prozessor parallel einen Punkt im aktuellen Sichtfenster.
+
+float frame;
+float max_frames;
+float zoom;
+float center_x;
+float center_y;
+
+pvar float chip_id;
+pvar float col;
+pvar float row;
+pvar float cx;
+pvar float cy;
+pvar float x;
+pvar float y;
+pvar float x2;
+pvar float y2;
+pvar float mag2;
+pvar float iters;
+pvar float active;
+
+frame = 0;
+max_frames = 45;
+zoom = 1.0;
+center_x = -0.7436438870371587;
+center_y = 0.13182590420531197;
+
+while (frame < max_frames) {
+  forall {
+    chip_id = chip();
+    col = chip_id % 64;
+    row = chip_id // 64;
+
+    cx = center_x + (((col / 63.0) - 0.5) * (3.2 / zoom));
+    cy = center_y + (((row / 31.0) - 0.5) * (2.0 / zoom));
+
+    x = 0.0;
+    y = 0.0;
+    iters = 0.0;
+    active = true;
+  }
+
+  repeat 50 {
+    where (active) {
+      x2 = x * x;
+      y2 = y * y;
+      y = (2.0 * x * y) + cy;
+      x = (x2 - y2) + cx;
+      mag2 = (x * x) + (y * y);
+      iters = iters + 1.0;
+      active = mag2 < 4.0;
+    }
+  }
+
+  led = ((iters % 12) > 4) and (iters < 49.0);
+  sleep 55;
+
+  zoom = zoom * 1.045;
+  center_x = center_x + 0.00020;
+  center_y = center_y + 0.00006;
+  frame = frame + 1;
+}

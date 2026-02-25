@@ -1,0 +1,29 @@
+# news_diffusion.cstar
+# NEWS-artige Nachbarschaftskommunikation.
+# Jeder Prozessor bildet seinen neuen Wert aus Nord/Sued/Ost/West + Eigenwert.
+# Klassischer SIMD-Stencil-Operator.
+
+pvar float field;
+pvar float north;
+pvar float south;
+pvar float east;
+pvar float west;
+pvar float next;
+
+forall {
+  field = rand();
+}
+
+repeat 260 {
+  forall {
+    north = news_n(field);
+    south = news_s(field);
+    east = news_e(field);
+    west = news_w(field);
+    next = (field + north + south + east + west) / 5.0;
+    field = next;
+  }
+
+  led = field > 0.55;
+  sleep 26;
+}

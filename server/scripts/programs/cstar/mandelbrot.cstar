@@ -1,0 +1,45 @@
+# mandelbrot.cstar
+# Jede Verarbeitungseinheit berechnet parallel einen Punkt der komplexen Ebene.
+# SIMD escape-time iteration mit where(active).
+
+pvar float chip_id;
+pvar float col;
+pvar float row;
+pvar float cx;
+pvar float cy;
+pvar float x;
+pvar float y;
+pvar float x2;
+pvar float y2;
+pvar float iters;
+pvar float active;
+pvar float mag2;
+
+forall {
+  chip_id = chip();
+  col = chip_id % 64;
+  row = chip_id // 64;
+
+  cx = -2.2 + (col / 63.0) * 3.0;
+  cy = -1.2 + (row / 31.0) * 2.4;
+
+  x = 0.0;
+  y = 0.0;
+  iters = 0.0;
+  active = true;
+}
+
+repeat 80 {
+  where (active) {
+    x2 = x * x;
+    y2 = y * y;
+    y = (2.0 * x * y) + cy;
+    x = (x2 - y2) + cx;
+    mag2 = (x * x) + (y * y);
+    iters = iters + 1.0;
+    active = mag2 < 4.0;
+  }
+}
+
+led = (iters > 10.0) and (iters < 79.0);
+sleep 3000;

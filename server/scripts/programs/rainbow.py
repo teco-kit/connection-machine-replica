@@ -6,9 +6,11 @@ Scrolls a full-spectrum rainbow across the LED strip.
 Optional argument: update interval in seconds (default 0.1).
 """
 
+import os
 import sys
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from cm_display import CMDisplay, LED_COUNT, hsv_to_color
 
 
