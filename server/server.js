@@ -9,6 +9,16 @@ const fs = require('fs');
 // --- Configuration ---
 const HTTP_PORT = 80;
 const TCP_PORT = 1337;
+
+// --- Logging ---
+const LOG_DIR = path.join(__dirname, 'log');
+const LOG_FILE = path.join(LOG_DIR, 'connections.log');
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+function logEvent(obj) {
+    const line = JSON.stringify({ time: new Date().toISOString(), ...obj }) + '\n';
+    fs.appendFile(LOG_FILE, line, () => {});  // async, fire-and-forget
+}
 const IDLE_TIMEOUT_MS = 60000;       // TCP idle → back to idle animation
 const DRAWING_TIMEOUT_MS = 5000;     // Drawing inactivity → back to idle
 const SCRIPTS_DIR = path.join(__dirname, 'scripts');
@@ -352,9 +362,13 @@ const httpServer = http.createServer(app);
 // --- WebSocket Server ---
 const wss = new WebSocketServer({ server: httpServer });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+    const clientIp = (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+    const userAgent = req.headers['user-agent'] || '';
+    const connectedAt = Date.now();
     webSocketClients++;
-    console.log(`Web client connected (${webSocketClients} total).`);
+    logEvent({ event: 'connect', ip: clientIp, userAgent, totalClients: webSocketClients });
+    console.log(`Web client connected from ${clientIp} (${webSocketClients} total).`);
 
     // Send current state and program list to new client
     ws.send(JSON.stringify({
@@ -404,6 +418,7 @@ wss.on('connection', (ws) => {
         } else if (msgType === 'run_program') {
             const programId = parsed.id;
             if (!programId) return;
+            logEvent({ event: 'run_program', program: programId, ip: clientIp });
 
             if (programId === 'idle') {
                 enterIdleState();
@@ -421,7 +436,9 @@ wss.on('connection', (ws) => {
 
     ws.on('close', () => {
         webSocketClients--;
-        console.log(`Web client disconnected (${webSocketClients} total).`);
+        const durationSec = Math.round((Date.now() - connectedAt) / 1000);
+        logEvent({ event: 'disconnect', ip: clientIp, durationSec, totalClients: webSocketClients });
+        console.log(`Web client disconnected from ${clientIp} after ${durationSec}s (${webSocketClients} total).`);
     });
 
     ws.on('error', (err) => console.error('WebSocket error:', err.message));
