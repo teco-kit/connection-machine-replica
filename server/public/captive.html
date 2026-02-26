@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>CM2 Captive Portal</title>
+  <style>
+    :root {
+      --bg: #0a0d12;
+      --panel: #121822;
+      --border: #263244;
+      --text: #d9e2ef;
+      --muted: #8ea2ba;
+      --ok: #27ae60;
+      --warn: #e67e22;
+      --btn: #1b2433;
+      --btn-border: #355072;
+      --btn-active: #2a5c8f;
+      --keyword: #66c2ff;
+      --string: #d7b56d;
+      --number: #84d6a8;
+      --comment: #8693a2;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at 10% 0%, #1a2436 0%, var(--bg) 48%);
+      color: var(--text);
+      font-family: "Orbitron", system-ui, sans-serif;
+      min-height: 100%;
+    }
+    .app {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+      letter-spacing: .04em;
+    }
+    .sub { font-size: .75rem; color: var(--muted); }
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 10px;
+      font-size: .72rem;
+      background: #2b3b52;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .row.controls {
+      grid-template-columns: auto 1fr auto;
+    }
+    select, button, input[type="range"] {
+      font: inherit;
+      color: var(--text);
+    }
+    select, button {
+      border: 1px solid var(--btn-border);
+      border-radius: 10px;
+      background: var(--btn);
+      padding: 9px 10px;
+      min-height: 42px;
+    }
+    button:active { background: var(--btn-active); }
+    .sliders { display: grid; gap: 8px; margin-top: 10px; }
+    .slider-line { display: grid; grid-template-columns: 70px 1fr 52px; gap: 8px; align-items: center; font-size: .72rem; color: var(--muted); }
+    input[type="range"] { width: 100%; }
+    .source-btn-wrap { margin-top: 10px; }
+    .source {
+      margin-top: 10px;
+      max-height: 46vh;
+      overflow: auto;
+      border: 1px solid #2a3648;
+      border-radius: 10px;
+      background: #0d1219;
+      padding: 10px;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre;
+    }
+    .tok-keyword { color: var(--keyword); font-weight: 600; }
+    .tok-string { color: var(--string); }
+    .tok-number { color: var(--number); }
+    .tok-comment { color: var(--comment); font-style: italic; }
+    .hint { font-size: .7rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <h1>Connection Machine 2</h1>
+      <div class="sub">Android captive mode (lightweight, stable)</div>
+      <div class="row">
+        <span id="status" class="status">Connecting...</span>
+        <button id="idleBtn">Idle</button>
+      </div>
+      <div class="row controls">
+        <button id="runBtn">Run Program</button>
+        <select id="programSelect"></select>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+      <div id="sliders" class="sliders">
+        <div class="slider-line">
+          <span>Load</span>
+          <input id="probabilitySlider" type="range" min="0" max="100" value="33" step="1">
+          <span id="probabilityValue">33%</span>
+        </div>
+        <div class="slider-line">
+          <span>Speed</span>
+          <input id="speedSlider" type="range" min="50" max="500" value="150" step="10">
+          <span id="speedValue">150ms</span>
+        </div>
+      </div>
+      <div id="sourceBtnWrap" class="source-btn-wrap" style="display:none;">
+        <button id="sourceBtn">Show Source</button>
+      </div>
+      <pre id="sourceCode" class="source" style="display:none;"></pre>
+    </div>
+    <div class="hint">Tip: for the full drawing UI, open `http://192.168.4.1/` in a normal browser.</div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const idleBtn = document.getElementById('idleBtn');
+    const runBtn = document.getElementById('runBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const programSelect = document.getElementById('programSelect');
+    const probabilitySlider = document.getElementById('probabilitySlider');
+    const probabilityValue = document.getElementById('probabilityValue');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
+    const slidersWrap = document.getElementById('sliders');
+    const sourceBtnWrap = document.getElementById('sourceBtnWrap');
+    const sourceBtn = document.getElementById('sourceBtn');
+    const sourceCode = document.getElementById('sourceCode');
+
+    let currentState = 'idle';
+    let currentProgram = null;
+    let currentPrograms = [];
+
+    function setStatus(text, ok = true) {
+      statusEl.textContent = text;
+      statusEl.style.background = ok ? '#1f7a47' : '#9f4f18';
+    }
+
+    function escapeHtml(s) {
+      return (s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    }
+
+    function highlightPlain(plain, keywords, numbers) {
+      let s = escapeHtml(plain);
+      s = s.replace(numbers, '<span class="tok-number">$&</span>');
+      s = s.replace(keywords, '<span class="tok-keyword">$&</span>');
+      return s;
+    }
+
+    function highlight(source, type) {
+      const keywords = type === 'python'
+        ? /\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b/g
+        : /\b(float|int|if|else|while|for|return)\b/g;
+      const numbers = /\b[0-9]+(?:\.[0-9]+)?\b/g;
+      const lines = (source || '').split('\n');
+      const out = [];
+      for (const line of lines) {
+        const cpos = type === 'python' ? line.indexOf('#') : line.indexOf('//');
+        const code = cpos >= 0 ? line.slice(0, cpos) : line;
+        const comment = cpos >= 0 ? line.slice(cpos) : '';
+        const tokens = [];
+        let i = 0;
+        while (i < code.length) {
+          const ch = code[i];
+          if (ch === '"' || ch === "'") {
+            const q = ch;
+            let j = i + 1;
+            while (j < code.length) {
+              if (code[j] === '\\') { j += 2; continue; }
+              if (code[j] === q) { j += 1; break; }
+              j += 1;
+            }
+            tokens.push('<span class="tok-string">' + escapeHtml(code.slice(i, j)) + '</span>');
+            i = j;
+            continue;
+          }
+          let j = i;
+          while (j < code.length && code[j] !== '"' && code[j] !== "'") j += 1;
+          tokens.push(highlightPlain(code.slice(i, j), keywords, numbers));
+          i = j;
+        }
+        let lineHtml = tokens.join('');
+        if (comment) lineHtml += '<span class="tok-comment">' + escapeHtml(comment) + '</span>';
+        out.push(lineHtml);
+      }
+      return out.join('\n');
+    }
+
+    async function api(path, method = 'GET', body = null) {
+      const opts = { method, cache: 'no-store', headers: {} };
+      if (body) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      const r = await fetch(path, opts);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }
+
+    function renderPrograms(list) {
+      currentPrograms = list || [];
+      const selected = programSelect.value;
+      programSelect.innerHTML = '';
+      const p = document.createElement('option');
+      p.value = '';
+      p.textContent = '-- choose program to run --';
+      programSelect.appendChild(p);
+      for (const prog of currentPrograms) {
+        if (prog.id === 'idle') continue;
+        const o = document.createElement('option');
+        o.value = prog.id;
+        o.textContent = prog.type === 'cstar' ? ('🗄️ ' + prog.name) : prog.name;
+        programSelect.appendChild(o);
+      }
+      if (selected && Array.from(programSelect.options).some(o => o.value === selected)) {
+        programSelect.value = selected;
+      }
+    }
+
+    function updateUi(state, program) {
+      currentState = state || 'idle';
+      currentProgram = program || null;
+      const selected = programSelect.value || '';
+      const effectiveProgram = (currentState === 'program' && currentProgram) ? currentProgram : selected;
+      const showProgramTools = !!effectiveProgram;
+      slidersWrap.style.display = showProgramTools ? 'none' : '';
+      sourceBtnWrap.style.display = showProgramTools ? '' : 'none';
+      runBtn.style.display = currentState === 'idle' ? '' : 'none';
+      if (currentState === 'program' && currentProgram) {
+        programSelect.value = currentProgram;
+      }
+      if (!showProgramTools) sourceCode.style.display = 'none';
+    }
+
+    async function refreshState() {
+      try {
+        const s = await api('/api/state');
+        renderPrograms(s.programs || []);
+        updateUi(s.state, s.program);
+        setStatus('Connected', true);
+      } catch {
+        setStatus('Reconnecting...', false);
+      }
+    }
+
+    async function sendControl(payload) {
+      try {
+        const out = await api('/api/control', 'POST', payload);
+        updateUi(out.state, out.program);
+        setStatus('Connected', true);
+      } catch {
+        setStatus('Control failed', false);
+      }
+    }
+
+    idleBtn.addEventListener('click', async () => {
+      await sendControl({ type: 'run_program', id: 'idle' });
+      programSelect.value = '';
+      sourceCode.style.display = 'none';
+    });
+
+    runBtn.addEventListener('click', async () => {
+      const id = programSelect.value;
+      if (!id) return;
+      await sendControl({ type: 'run_program', id });
+    });
+
+    refreshBtn.addEventListener('click', refreshState);
+    programSelect.addEventListener('change', () => updateUi(currentState, currentProgram));
+
+    probabilitySlider.addEventListener('input', () => {
+      const v = Number(probabilitySlider.value || 0);
+      probabilityValue.textContent = v + '%';
+      sendControl({ type: 'probability', value: v / 100.0 });
+    });
+
+    speedSlider.addEventListener('input', () => {
+      const v = Number(speedSlider.value || 150);
+      speedValue.textContent = v + 'ms';
+      sendControl({ type: 'speed', value: v / 1000.0 });
+    });
+
+    sourceBtn.addEventListener('click', async () => {
+      const selected = (currentState === 'program' && currentProgram) ? currentProgram : programSelect.value;
+      if (!selected) return;
+      try {
+        const src = await api('/api/program-source/' + encodeURIComponent(selected));
+        sourceCode.innerHTML = highlight(src.source || '', src.type || '');
+      } catch (e) {
+        sourceCode.textContent = 'Failed to load source: ' + e.message;
+      }
+      sourceCode.style.display = '';
+    });
+
+    // Init
+    refreshState();
+    setInterval(refreshState, 1300);
+  </script>
+</body>
+</html>

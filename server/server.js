@@ -468,13 +468,15 @@ function portalRedirect(req, res) {
     const ip = requestClientIp(req);
     if (ip) portalSessions.set(ip, Date.now());
     setNoCacheHeaders(res);
-    res.redirect(302, `http://${localIp}/`);
+    res.redirect(302, `http://${localIp}/captive`);
 }
 
 function portalPage(req, res) {
+    const ip = requestClientIp(req);
+    if (ip) portalSessions.set(ip, Date.now());
     markPortalSession(req);
     setNoCacheHeaders(res);
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'captive.html'));
 }
 
 function portalProbeResponse(req, res) {
@@ -492,7 +494,7 @@ function portalProbeResponse(req, res) {
     if (isCaptiveWebView) {
         if (CAPTIVE_DEBUG) {
             const ip = requestClientIp(req);
-            console.log(`[captive-probe] serving portal page to captive webview ip=${ip}`);
+            console.log(`[captive-probe] serving /captive page to captive webview ip=${ip}`);
         }
         return portalPage(req, res);
     }
@@ -655,6 +657,10 @@ app.get('/api/program-source/:id', (req, res) => {
     } catch (err) {
         res.status(500).json({ error: `Failed to read source: ${err.message}` });
     }
+});
+
+app.get('/captive', (req, res) => {
+    portalPage(req, res);
 });
 
 app.get('/', (req, res) => {
