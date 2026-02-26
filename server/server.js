@@ -530,6 +530,19 @@ app.use((req, res, next) => {
     // Also allow hostname-style access (e.g. "raspberrypi.local")
     const hostAllowed = host === localIp || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
     if (!hostAllowed) {
+        const p = req.path || '';
+        const isAsset =
+            p.endsWith('.css') ||
+            p.endsWith('.js') ||
+            p.endsWith('.woff2') ||
+            p.endsWith('.png') ||
+            p.endsWith('.jpg') ||
+            p.endsWith('.jpeg') ||
+            p.endsWith('.svg') ||
+            p.endsWith('.ico');
+        if (isAsset || p.startsWith('/api/')) {
+            return next();
+        }
         return portalRedirect(req, res);
     }
     next();
