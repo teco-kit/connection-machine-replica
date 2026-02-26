@@ -11,7 +11,8 @@ const HTTP_PORT = 80;
 const TCP_PORT = 1337;
 const CAPTIVE_AP_IFACE = process.env.CAPTIVE_AP_IFACE || 'wlan0';
 const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN !== '0';
-const PORTAL_SESSION_TTL_MS = 30 * 60 * 1000;
+const PORTAL_SESSION_TTL_MS = 10 * 60 * 1000;
+const CAPTIVE_DEBUG = process.env.CAPTIVE_DEBUG === '1';
 const portalSessions = new Map(); // ip -> last active timestamp (ms)
 
 function captiveForwardRules() {
@@ -420,7 +421,19 @@ function requestClientIp(req) {
     return (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
 }
 
+function requestHost(req) {
+    const hostHeader = (req.headers.host || '').trim().toLowerCase();
+    return hostHeader.split(':')[0].replace(/^\[/, '').replace(/\]$/, '');
+}
+
+function isLocalPortalHost(req) {
+    const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
+    const host = requestHost(req);
+    return host === localIp || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+}
+
 function markPortalSession(req) {
+    if (!isLocalPortalHost(req)) return;
     const ip = requestClientIp(req);
     if (!ip) return;
     portalSessions.set(ip, Date.now());
@@ -452,6 +465,8 @@ function setNoCacheHeaders(res) {
 
 function portalRedirect(req, res) {
     const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
+    const ip = requestClientIp(req);
+    if (ip) portalSessions.set(ip, Date.now());
     setNoCacheHeaders(res);
     res.redirect(302, `http://${localIp}/`);
 }
@@ -463,16 +478,13 @@ function portalPage(req, res) {
 }
 
 function portalProbeResponse(req, res) {
-    const acceptsHtml = (req.headers.accept || '').includes('text/html');
-
-    // For real captive-browser page loads, keep directing to the actual portal.
-    if (acceptsHtml) {
-        return portalRedirect(req, res);
+    if (CAPTIVE_DEBUG) {
+        const ip = requestClientIp(req);
+        console.log(`[captive-probe] ip=${ip} path=${req.path} host=${requestHost(req)} accept=${req.headers.accept || ''} ua=${req.headers['user-agent'] || ''}`);
     }
 
-    // For background/system probes after the portal is already active, return a
-    // lightweight 200 response. This avoids repeatedly loading the full UI
-    // (which would create rapid WS connect/disconnect churn).
+    // After first redirect/session creation, keep all further probe URLs quiet.
+    // Returning lightweight 200 avoids repeated captive-browser reopen loops.
     if (hasFreshPortalSession(req)) {
         setNoCacheHeaders(res);
         return res.status(200).type('text/plain').send('CM2 captive portal active');
@@ -532,11 +544,7 @@ app.get('/check_network_status.txt', (req, res) => portalProbeResponse(req, res)
 // This only handles HTTP — HTTPS captive-portal checks on Android 10+ bypass
 // this since they go directly to Google's servers over port 443.
 app.use((req, res, next) => {
-    const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
-    const hostHeader = (req.headers.host || '').trim().toLowerCase();
-    const host = hostHeader.split(':')[0].replace(/^\[/, '').replace(/\]$/, '');
-    // Also allow hostname-style access (e.g. "raspberrypi.local")
-    const hostAllowed = host === localIp || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+    const hostAllowed = isLocalPortalHost(req);
     if (!hostAllowed) {
         const p = req.path || '';
         const isAsset =
