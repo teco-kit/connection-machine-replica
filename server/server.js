@@ -478,9 +478,23 @@ function portalPage(req, res) {
 }
 
 function portalProbeResponse(req, res) {
+    const userAgent = req.headers['user-agent'] || '';
+    const accept = req.headers.accept || '';
+    const isCaptiveWebView = /Android/i.test(userAgent) && /\bwv\b/i.test(userAgent) && accept.includes('text/html');
+
     if (CAPTIVE_DEBUG) {
         const ip = requestClientIp(req);
-        console.log(`[captive-probe] ip=${ip} path=${req.path} host=${requestHost(req)} accept=${req.headers.accept || ''} ua=${req.headers['user-agent'] || ''}`);
+        console.log(`[captive-probe] ip=${ip} path=${req.path} host=${requestHost(req)} accept=${accept} ua=${userAgent}`);
+    }
+
+    // Requests from Android captive webview should get the full portal page.
+    // Returning probe text here would replace the UI with plain text.
+    if (isCaptiveWebView) {
+        if (CAPTIVE_DEBUG) {
+            const ip = requestClientIp(req);
+            console.log(`[captive-probe] serving portal page to captive webview ip=${ip}`);
+        }
+        return portalPage(req, res);
     }
 
     // After first redirect/session creation, keep all further probe URLs quiet.
