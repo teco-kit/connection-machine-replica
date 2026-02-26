@@ -50,7 +50,6 @@
       font-size: 1rem;
       letter-spacing: .04em;
     }
-    .sub { font-size: .75rem; color: var(--muted); }
     .status {
       display: inline-block;
       padding: 2px 7px;
@@ -95,21 +94,66 @@
       background: #0d1219;
       padding: 10px;
       font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      white-space: pre;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      max-width: 100%;
     }
     .tok-keyword { color: var(--keyword); font-weight: 600; }
     .tok-string { color: var(--string); }
     .tok-number { color: var(--number); }
     .tok-comment { color: var(--comment); font-style: italic; }
-    .chrome-wrap { margin-top: 8px; }
-    .chrome-wrap button { width: 100%; }
+    .better-wrap {
+      margin-top: 8px;
+      border: 1px solid #2a3648;
+      border-radius: 10px;
+      padding: 8px;
+      background: #0d1219;
+      display: grid;
+      gap: 6px;
+    }
+    .better-title {
+      font-size: .66rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .ip-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .ip-code {
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      border: 1px solid #34465f;
+      border-radius: 8px;
+      padding: 7px;
+      color: #b5c7d8;
+      background: #0a0f15;
+    }
+    .copy-btn {
+      min-height: 32px;
+      padding: 6px 8px;
+      font-size: .62rem;
+    }
+    .qr-wrap {
+      display: grid;
+      place-items: center;
+      margin-top: 2px;
+    }
+    .qr-wrap img {
+      width: 140px;
+      height: 140px;
+      border: 1px solid #314058;
+      border-radius: 8px;
+      background: #fff;
+    }
   </style>
 </head>
 <body>
   <div class="app">
     <div class="card">
       <h1>Connection Machine 2</h1>
-      <div class="sub">Android captive mode (lightweight, stable)</div>
       <div class="row">
         <span id="status" class="status">Connecting...</span>
       </div>
@@ -134,8 +178,15 @@
         <button id="sourceBtn">Show Source</button>
       </div>
       <pre id="sourceCode" class="source" style="display:none;"></pre>
-      <div class="chrome-wrap">
-        <button id="openChromeBtn">Open in Chrome</button>
+      <div class="better-wrap">
+        <div class="better-title">If you want a better experience, go to your browser and open the address below, or scan the QR code. Then you can also play Snake on the Connection Machine.</div>
+        <div class="ip-row">
+          <div id="ipCode" class="ip-code"></div>
+          <button id="copyIpBtn" class="copy-btn">Copy</button>
+        </div>
+        <div class="qr-wrap">
+          <img id="qrImg" src="/api/qr-full.svg" alt="QR code to open full website">
+        </div>
       </div>
     </div>
   </div>
@@ -153,13 +204,20 @@
     const sourceBtnWrap = document.getElementById('sourceBtnWrap');
     const sourceBtn = document.getElementById('sourceBtn');
     const sourceCode = document.getElementById('sourceCode');
-    const openChromeBtn = document.getElementById('openChromeBtn');
+    const copyIpBtn = document.getElementById('copyIpBtn');
+    const ipCode = document.getElementById('ipCode');
+    const qrImg = document.getElementById('qrImg');
 
     const FULL_URL = window.location.origin + '/';
+    const FULL_HOST = window.location.host;
+    const FULL_IP_URL = `http://${FULL_HOST}/`;
+    ipCode.textContent = FULL_IP_URL;
+    qrImg.src = '/api/qr-full.svg';
 
     let currentState = 'idle';
     let currentProgram = null;
     let currentPrograms = [];
+    let currentProgramSig = '';
 
     function setStatus(text, ok = true) {
       statusEl.textContent = text;
@@ -229,6 +287,9 @@
 
     function renderPrograms(list) {
       currentPrograms = list || [];
+      const sig = JSON.stringify(currentPrograms.map((p) => `${p.id}:${p.type}:${p.name}`));
+      if (sig === currentProgramSig) return;
+      currentProgramSig = sig;
       const selected = programSelect.value;
       programSelect.innerHTML = '';
       const p = document.createElement('option');
@@ -259,7 +320,10 @@
       if (currentState === 'program' && currentProgram) {
         programSelect.value = currentProgram;
       }
-      if (!showProgramTools) sourceCode.style.display = 'none';
+      if (!showProgramTools) {
+        sourceCode.style.display = 'none';
+        sourceBtn.textContent = 'Show Source';
+      }
     }
 
     async function refreshState() {
@@ -312,6 +376,12 @@
     sourceBtn.addEventListener('click', async () => {
       const selected = (currentState === 'program' && currentProgram) ? currentProgram : programSelect.value;
       if (!selected) return;
+      const showing = sourceCode.style.display !== 'none';
+      if (showing) {
+        sourceCode.style.display = 'none';
+        sourceBtn.textContent = 'Show Source';
+        return;
+      }
       try {
         const src = await api('/api/program-source/' + encodeURIComponent(selected));
         sourceCode.innerHTML = highlight(src.source || '', src.type || '');
@@ -319,15 +389,17 @@
         sourceCode.textContent = 'Failed to load source: ' + e.message;
       }
       sourceCode.style.display = '';
+      sourceBtn.textContent = 'Hide Source';
     });
 
-    openChromeBtn.addEventListener('click', () => {
-      const intentUrl = `intent://${window.location.host}/#Intent;scheme=http;package=com.android.chrome;end`;
+    copyIpBtn.addEventListener('click', async () => {
       try {
-        window.location.href = intentUrl;
+        await navigator.clipboard.writeText(FULL_IP_URL);
+        copyIpBtn.textContent = 'Copied';
       } catch {
-        window.location.href = FULL_URL;
+        copyIpBtn.textContent = 'Copy failed';
       }
+      setTimeout(() => { copyIpBtn.textContent = 'Copy'; }, 1200);
     });
 
     // Init

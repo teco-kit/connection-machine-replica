@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const net = require('net');
@@ -14,6 +15,7 @@ const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN !== '0';
 const PORTAL_SESSION_TTL_MS = 10 * 60 * 1000;
 const CAPTIVE_DEBUG = process.env.CAPTIVE_DEBUG === '1';
 const portalSessions = new Map(); // ip -> last active timestamp (ms)
+const qrCache = new Map(); // url -> { svg, ts }
 
 function captiveForwardRules() {
     return [
@@ -673,6 +675,44 @@ app.get('/api/program-source/:id', (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ error: `Failed to read source: ${err.message}` });
+    }
+});
+
+function fetchQrSvg(url) {
+    return new Promise((resolve, reject) => {
+        const endpoint = `https://quickchart.io/qr?text=${encodeURIComponent(url)}&size=240&margin=1&ecLevel=M&format=svg`;
+        const req = https.get(endpoint, { timeout: 3500 }, (resp) => {
+            if (resp.statusCode !== 200) {
+                resp.resume();
+                reject(new Error(`QR HTTP ${resp.statusCode}`));
+                return;
+            }
+            let data = '';
+            resp.setEncoding('utf8');
+            resp.on('data', (chunk) => { data += chunk; });
+            resp.on('end', () => resolve(data));
+        });
+        req.on('timeout', () => req.destroy(new Error('QR timeout')));
+        req.on('error', reject);
+    });
+}
+
+app.get('/api/qr-full.svg', async (req, res) => {
+    const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
+    const target = `http://${localIp}/`;
+    const cached = qrCache.get(target);
+    const now = Date.now();
+    if (cached && now - cached.ts < 12 * 60 * 60 * 1000) {
+        res.type('image/svg+xml').send(cached.svg);
+        return;
+    }
+    try {
+        const svg = await fetchQrSvg(target);
+        qrCache.set(target, { svg, ts: now });
+        res.type('image/svg+xml').send(svg);
+    } catch {
+        const fallback = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="100%" height="100%" fill="#0d1219"/><text x="50%" y="45%" text-anchor="middle" fill="#9fb4cb" font-size="13" font-family="monospace">QR unavailable</text><text x="50%" y="58%" text-anchor="middle" fill="#9fb4cb" font-size="11" font-family="monospace">${target}</text></svg>`;
+        res.type('image/svg+xml').send(fallback);
     }
 });
 
