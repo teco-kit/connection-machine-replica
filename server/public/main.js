@@ -224,7 +224,7 @@ function renderProgramList() {
     programSelect.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = '-- choose program to run --';
+    placeholder.textContent = '-- choose --';
     programSelect.appendChild(placeholder);
 
     for (const prog of currentPrograms) {
@@ -256,10 +256,6 @@ idleBtn.addEventListener('click', () => {
 });
 
 programSelect.addEventListener('change', () => {
-    // Show snake controls as soon as snake is selected (pre-run preview)
-    const showSnake = (programSelect.value === 'snake');
-    gridArea.style.display = showSnake ? 'none' : '';
-    snakeControls.style.display = showSnake ? 'flex' : 'none';
     updateActiveState(currentState, currentProgramId);
 });
 
@@ -290,10 +286,9 @@ function updateActiveState(state, programId) {
     if (!showProgramTools) hideSourceOverlay();
 
     // Toggle snake UI vs normal display
-    // Only show when snake is actively running, or pre-selected in idle
+    // Only show when snake is actively running.
     const isSnake = (state === 'program' && programId === 'snake');
-    const previewSnake = (state === 'idle' && programSelect.value === 'snake');
-    const showSnake = isSnake || previewSnake;
+    const showSnake = isSnake;
     gridArea.style.display = showSnake ? 'none' : '';
     snakeControls.style.display = showSnake ? 'flex' : 'none';
     if (isSnake) snakeScore.textContent = '0';

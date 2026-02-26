@@ -274,8 +274,9 @@ h1 {
   border-radius: 10px;
   background: #181818;
   color: #ccc;
+  width: clamp(160px, 42vw, 240px);
   min-width: 160px;
-  max-width: 50vw;
+  max-width: 240px;
   -webkit-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
@@ -303,7 +304,11 @@ h1 {
 }
 
 .program-selector .action-btn {
-  min-width: 108px;
+  min-width: 84px;
+}
+
+.program-selector .action-btn.idle {
+  min-width: 66px;
 }
 
 .action-btn:active {

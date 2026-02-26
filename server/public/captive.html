@@ -53,9 +53,9 @@
     .sub { font-size: .75rem; color: var(--muted); }
     .status {
       display: inline-block;
-      padding: 3px 8px;
+      padding: 2px 7px;
       border-radius: 10px;
-      font-size: .62rem;
+      font-size: .56rem;
       background: #2b3b52;
       white-space: nowrap;
     }
@@ -84,7 +84,8 @@
     .sliders { display: grid; gap: 6px; margin-top: 8px; }
     .slider-line { display: grid; grid-template-columns: 62px 1fr 48px; gap: 6px; align-items: center; font-size: .68rem; color: var(--muted); }
     input[type="range"] { width: 100%; }
-    .source-btn-wrap { margin-top: 10px; }
+    .source-btn-wrap { margin-top: 8px; }
+    .source-btn-wrap button { width: 100%; }
     .source {
       margin-top: 8px;
       max-height: 38vh;
@@ -100,21 +101,8 @@
     .tok-string { color: var(--string); }
     .tok-number { color: var(--number); }
     .tok-comment { color: var(--comment); font-style: italic; }
-    .hint { font-size: .7rem; color: var(--muted); }
-    .full-link {
-      margin-top: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .full-url {
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      color: #9fb4cb;
-      word-break: break-all;
-      border: 1px solid #2a3648;
-      border-radius: 8px;
-      padding: 8px;
-      background: #0d1219;
-    }
+    .chrome-wrap { margin-top: 8px; }
+    .chrome-wrap button { width: 100%; }
   </style>
 </head>
 <body>
@@ -124,12 +112,11 @@
       <div class="sub">Android captive mode (lightweight, stable)</div>
       <div class="row">
         <span id="status" class="status">Connecting...</span>
-        <button id="idleBtn">Idle</button>
       </div>
       <div class="row controls">
-        <button id="runBtn">Run Program</button>
+        <button id="idleBtn">Idle</button>
         <select id="programSelect"></select>
-        <button id="refreshBtn">Refresh</button>
+        <button id="runBtn">Run</button>
       </div>
       <div id="sliders" class="sliders">
         <div class="slider-line">
@@ -147,20 +134,16 @@
         <button id="sourceBtn">Show Source</button>
       </div>
       <pre id="sourceCode" class="source" style="display:none;"></pre>
-      <div class="full-link">
-        <button id="openFullBtn">Open Full Website</button>
-        <button id="copyUrlBtn">Copy Full URL</button>
-        <div id="fullUrl" class="full-url"></div>
+      <div class="chrome-wrap">
+        <button id="openChromeBtn">Open in Chrome</button>
       </div>
     </div>
-    <div class="hint">Tip: for the full drawing UI, open `http://192.168.4.1/` in a normal browser.</div>
   </div>
 
   <script>
     const statusEl = document.getElementById('status');
     const idleBtn = document.getElementById('idleBtn');
     const runBtn = document.getElementById('runBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
     const programSelect = document.getElementById('programSelect');
     const probabilitySlider = document.getElementById('probabilitySlider');
     const probabilityValue = document.getElementById('probabilityValue');
@@ -170,12 +153,9 @@
     const sourceBtnWrap = document.getElementById('sourceBtnWrap');
     const sourceBtn = document.getElementById('sourceBtn');
     const sourceCode = document.getElementById('sourceCode');
-    const openFullBtn = document.getElementById('openFullBtn');
-    const copyUrlBtn = document.getElementById('copyUrlBtn');
-    const fullUrl = document.getElementById('fullUrl');
+    const openChromeBtn = document.getElementById('openChromeBtn');
 
     const FULL_URL = window.location.origin + '/';
-    fullUrl.textContent = FULL_URL;
 
     let currentState = 'idle';
     let currentProgram = null;
@@ -253,7 +233,7 @@
       programSelect.innerHTML = '';
       const p = document.createElement('option');
       p.value = '';
-      p.textContent = '-- choose program to run --';
+      p.textContent = '-- choose --';
       programSelect.appendChild(p);
       for (const prog of currentPrograms) {
         if (prog.id === 'idle') continue;
@@ -315,7 +295,6 @@
       await sendControl({ type: 'run_program', id });
     });
 
-    refreshBtn.addEventListener('click', refreshState);
     programSelect.addEventListener('change', () => updateUi(currentState, currentProgram));
 
     probabilitySlider.addEventListener('input', () => {
@@ -342,21 +321,12 @@
       sourceCode.style.display = '';
     });
 
-    openFullBtn.addEventListener('click', () => {
-      // In some Android captive webviews this opens external browser;
-      // if blocked, fallback to same-tab navigation.
-      const w = window.open(FULL_URL, '_blank');
-      if (!w) window.location.href = FULL_URL;
-    });
-
-    copyUrlBtn.addEventListener('click', async () => {
+    openChromeBtn.addEventListener('click', () => {
+      const intentUrl = `intent://${window.location.host}/#Intent;scheme=http;package=com.android.chrome;end`;
       try {
-        await navigator.clipboard.writeText(FULL_URL);
-        copyUrlBtn.textContent = 'Copied';
-        setTimeout(() => { copyUrlBtn.textContent = 'Copy Full URL'; }, 1200);
+        window.location.href = intentUrl;
       } catch {
-        copyUrlBtn.textContent = 'Copy failed';
-        setTimeout(() => { copyUrlBtn.textContent = 'Copy Full URL'; }, 1200);
+        window.location.href = FULL_URL;
       }
     });
 
