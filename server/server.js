@@ -10,7 +10,19 @@ const fs = require('fs');
 const HTTP_PORT = 80;
 const TCP_PORT = 1337;
 const CAPTIVE_AP_IFACE = process.env.CAPTIVE_AP_IFACE || 'wlan0';
-const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN !== '0';
+const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN === '1';
+const PORTAL_SESSION_TTL_MS = 30 * 60 * 1000;
+const portalSessions = new Map(); // ip -> last active timestamp (ms)
+
+function captiveForwardRules() {
+    return [
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '80', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '443', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '443', '-j', 'REJECT'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '853', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '853', '-j', 'REJECT'],
+    ];
+}
 
 function ensureIptablesRule(ruleArgs) {
     const check = spawnSync('iptables', ['-C', ...ruleArgs], { stdio: 'ignore' });
@@ -26,8 +38,22 @@ function ensureIptablesRule(ruleArgs) {
     return true;
 }
 
+function removeIptablesRule(ruleArgs) {
+    // Remove all duplicates if present.
+    while (true) {
+        const check = spawnSync('iptables', ['-C', ...ruleArgs], { stdio: 'ignore' });
+        if (check.status !== 0) break;
+        const del = spawnSync('iptables', ['-D', ...ruleArgs], { stdio: 'pipe' });
+        if (del.status !== 0) {
+            const stderr = (del.stderr || '').toString().trim();
+            console.warn(`[captive-lockdown] Failed to remove iptables rule: ${ruleArgs.join(' ')}`);
+            if (stderr) console.warn(`[captive-lockdown] ${stderr}`);
+            break;
+        }
+    }
+}
+
 function enforceCaptiveLockdown() {
-    if (!CAPTIVE_LOCKDOWN) return;
     if (process.platform !== 'linux') return;
 
     const iptablesProbe = spawnSync('iptables', ['--version'], { stdio: 'ignore' });
@@ -42,16 +68,13 @@ function enforceCaptiveLockdown() {
         return;
     }
 
-    // Keep AP clients on the local portal by blocking forwarded web validation
-    // traffic to upstream networks. Requests to the Pi itself are INPUT traffic
-    // and remain reachable (portal on :80, DNS/DHCP via dnsmasq).
-    const rules = [
-        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '80', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
-        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '443', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
-        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '443', '-j', 'REJECT'],
-        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '853', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
-        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '853', '-j', 'REJECT'],
-    ];
+    const rules = captiveForwardRules();
+
+    if (!CAPTIVE_LOCKDOWN) {
+        for (const rule of rules) removeIptablesRule(rule);
+        console.log(`[captive-lockdown] Disabled on ${CAPTIVE_AP_IFACE} (old forwarded 80/443/853 rules removed).`);
+        return;
+    }
 
     let addedAny = false;
     for (const rule of rules) {
@@ -319,6 +342,64 @@ function resetDrawingTimeout() {
     }, DRAWING_TIMEOUT_MS);
 }
 
+function handleControlMessage(parsed, clientIp = '') {
+    const msgType = parsed?.type || 'draw';
+
+    // While a TCP stream is live, ignore all web/API control commands.
+    if (serverState === 'tcp_streaming') return { ok: false, ignored: 'tcp_streaming' };
+
+    if (msgType === 'draw') {
+        if (serverState !== 'drawing') {
+            enterDrawingState();
+        }
+        resetDrawingTimeout();
+
+        if (activeProcess && activeProcess.stdin && !activeProcess.killed) {
+            try { activeProcess.stdin.write(JSON.stringify(parsed) + '\n'); } catch {}
+        }
+        return { ok: true };
+    }
+
+    if (msgType === 'probability' || msgType === 'speed') {
+        if (activeProcess && activeProcess.stdin && !activeProcess.killed) {
+            try { activeProcess.stdin.write(JSON.stringify(parsed) + '\n'); } catch {}
+        }
+        return { ok: true };
+    }
+
+    if (msgType === 'direction') {
+        if (serverState === 'program' && activeProcess && activeProcess.stdin && !activeProcess.killed) {
+            try { activeProcess.stdin.write(JSON.stringify(parsed) + '\n'); } catch {}
+        }
+        return { ok: true };
+    }
+
+    if (msgType === 'run_program') {
+        const programId = parsed.id;
+        if (!programId) return { ok: false, error: 'missing_program_id' };
+        logEvent({ event: 'run_program', program: programId, ip: clientIp });
+
+        if (programId === 'idle') {
+            enterIdleState();
+            return { ok: true };
+        }
+
+        const available = getAvailablePrograms();
+        if (available.some((p) => p.id === programId)) {
+            enterProgramState(programId);
+            return { ok: true };
+        }
+        return { ok: false, error: 'unknown_program' };
+    }
+
+    if (msgType === 'stop_program') {
+        enterIdleState();
+        return { ok: true };
+    }
+
+    return { ok: false, error: 'unsupported_type' };
+}
+
 // --- Broadcast helpers ---
 function broadcastState() {
     const msg = JSON.stringify({
@@ -333,6 +414,29 @@ function broadcastState() {
 
 // --- Express Web Server ---
 const app = express();
+app.use(express.json({ limit: '256kb' }));
+
+function requestClientIp(req) {
+    return (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+}
+
+function markPortalSession(req) {
+    const ip = requestClientIp(req);
+    if (!ip) return;
+    portalSessions.set(ip, Date.now());
+}
+
+function hasFreshPortalSession(req) {
+    const ip = requestClientIp(req);
+    if (!ip) return false;
+    const ts = portalSessions.get(ip);
+    if (!ts) return false;
+    if (Date.now() - ts > PORTAL_SESSION_TTL_MS) {
+        portalSessions.delete(ip);
+        return false;
+    }
+    return true;
+}
 
 // Helper: issue an absolute 302 redirect to our portal root.
 // Using the IP from the incoming socket ensures the captive portal browser
@@ -350,6 +454,16 @@ function portalRedirect(req, res) {
     const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
     setNoCacheHeaders(res);
     res.redirect(302, `http://${localIp}/`);
+}
+
+function portalProbeResponse(req, res) {
+    // Once a client already opened the portal recently, avoid repeated redirects
+    // for probe URLs. This prevents churn in Android captive portal webviews.
+    if (hasFreshPortalSession(req)) {
+        setNoCacheHeaders(res);
+        return res.status(200).type('text/plain').send('CM2 captive portal active');
+    }
+    return portalRedirect(req, res);
 }
 
 // --- Captive portal detection endpoints ---
@@ -376,7 +490,7 @@ app.all([
     '/clients3.google.com/generate_204',
     '/connectivitycheck.gstatic.com/generate_204',
     '/connectivitycheck.android.com/generate_204',
-], (req, res) => portalRedirect(req, res));
+], (req, res) => portalProbeResponse(req, res));
 
 // Samsung-specific detection
 app.all([
@@ -384,11 +498,11 @@ app.all([
     '/wifi.samsung.com/generate_204',
     '/samsung.com/generate_204',
     '/www.samsung.com/generate_204',
-], (req, res) => portalRedirect(req, res));
+], (req, res) => portalProbeResponse(req, res));
 
 // Xiaomi / MIUI
-app.all('/generate204', (req, res) => portalRedirect(req, res));
-app.all('/miui/v5/redirect', (req, res) => portalRedirect(req, res));
+app.all('/generate204', (req, res) => portalProbeResponse(req, res));
+app.all('/miui/v5/redirect', (req, res) => portalProbeResponse(req, res));
 
 // Windows NCSI: expects exact strings, otherwise shows "No Internet" banner.
 // A redirect here also triggers the captive portal notification on Windows.
@@ -397,7 +511,7 @@ app.get('/connecttest.txt', (req, res) => res.type('txt').send('Microsoft Connec
 app.get('/redirect', (req, res) => portalRedirect(req, res));
 
 // Generic Android / misc
-app.get('/check_network_status.txt', (req, res) => portalRedirect(req, res));
+app.get('/check_network_status.txt', (req, res) => portalProbeResponse(req, res));
 
 // Catch-all: if the request Host does not match our IP (i.e. the device's DNS
 // resolver sent a foreign hostname's request to us), redirect to the portal.
@@ -415,8 +529,47 @@ app.use((req, res, next) => {
     next();
 });
 
+// Mark clients as active portal users when they request local portal resources.
+app.use((req, res, next) => {
+    const p = req.path || '';
+    if (
+        p === '/' ||
+        p.startsWith('/api/') ||
+        p.endsWith('.html') ||
+        p.endsWith('.js') ||
+        p.endsWith('.css') ||
+        p.endsWith('.woff2')
+    ) {
+        markPortalSession(req);
+    }
+    next();
+});
+
 app.get('/api/programs', (req, res) => {
     res.json(getAvailablePrograms());
+});
+
+app.get('/api/state', (req, res) => {
+    setNoCacheHeaders(res);
+    res.json({
+        state: serverState,
+        program: activeProgramId,
+        programs: getAvailablePrograms(),
+    });
+});
+
+app.post('/api/control', (req, res) => {
+    const parsed = req.body;
+    if (!parsed || typeof parsed !== 'object') {
+        return res.status(400).json({ ok: false, error: 'invalid_json_body' });
+    }
+    const clientIp = requestClientIp(req);
+    const result = handleControlMessage(parsed, clientIp);
+    res.json({
+        ...result,
+        state: serverState,
+        program: activeProgramId,
+    });
 });
 
 app.get('/api/program-source/:id', (req, res) => {
@@ -490,53 +643,7 @@ wss.on('connection', (ws, req) => {
         } catch {
             return;
         }
-
-        const msgType = parsed.type || 'draw';
-
-        // While a TCP stream is live, ignore all web control commands.
-        // The UI will reflect the tcp_streaming state; controls are re-enabled
-        // automatically when the TCP client disconnects.
-        if (serverState === 'tcp_streaming') return;
-
-        if (msgType === 'draw') {
-            // Switch to drawing state if not already there
-            if (serverState !== 'drawing') {
-                enterDrawingState();
-            }
-            resetDrawingTimeout();
-
-            // Forward draw command to drawing.py
-            if (activeProcess && activeProcess.stdin && !activeProcess.killed) {
-                try { activeProcess.stdin.write(message + '\n'); } catch {}
-            }
-        } else if (msgType === 'probability' || msgType === 'speed') {
-            // Forward tunable commands to whichever script is running
-            // (idle_animation.py handles these; drawing.py ignores them)
-            if (activeProcess && activeProcess.stdin && !activeProcess.killed) {
-                try { activeProcess.stdin.write(message + '\n'); } catch {}
-            }
-        } else if (msgType === 'direction') {
-            // Forward direction input to the running program (e.g. snake)
-            if (serverState === 'program' && activeProcess && activeProcess.stdin && !activeProcess.killed) {
-                try { activeProcess.stdin.write(JSON.stringify(parsed) + '\n'); } catch {}
-            }
-        } else if (msgType === 'run_program') {
-            const programId = parsed.id;
-            if (!programId) return;
-            logEvent({ event: 'run_program', program: programId, ip: clientIp });
-
-            if (programId === 'idle') {
-                enterIdleState();
-            } else {
-                // Validate program exists
-                const available = getAvailablePrograms();
-                if (available.some(p => p.id === programId)) {
-                    enterProgramState(programId);
-                }
-            }
-        } else if (msgType === 'stop_program') {
-            enterIdleState();
-        }
+        handleControlMessage(parsed, clientIp);
     });
 
     ws.on('close', () => {

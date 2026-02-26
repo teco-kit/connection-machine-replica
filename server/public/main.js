@@ -15,6 +15,7 @@ const sourceOverlay = document.getElementById('sourceOverlay');
 const closeSourceBtn = document.getElementById('closeSourceBtn');
 const sourceTitle = document.getElementById('sourceTitle');
 const sourceCode = document.getElementById('sourceCode');
+const sourceCodePre = document.querySelector('.source-pre');
 
 function setSliderVisibility(visible) {
     // Use visibility (not display) so sliders always reserve their space
@@ -27,6 +28,11 @@ function setSliderVisibility(visible) {
 function setProgramToolsVisibility(visible) {
     if (!programTools) return;
     programTools.style.display = visible ? 'flex' : 'none';
+}
+
+function setRunButtonVisibility(visible) {
+    if (!runBtn) return;
+    runBtn.style.display = visible ? '' : 'none';
 }
 
 const NUM_CUBES_X = 2;
@@ -48,14 +54,10 @@ const probabilityValue = document.getElementById('probabilityValue');
 function updateProbability() {
     const probability = probabilitySlider.value;
     probabilityValue.textContent = `${probability}%`;
-    
-    // Send probability update to server
-    if (ws.readyState === WS_OPEN) {
-        ws.send(JSON.stringify({
-            type: 'probability',
-            value: probability / 100.0  // Convert to 0.0-1.0 range
-        }));
-    }
+    sendControlMessage({
+        type: 'probability',
+        value: probability / 100.0  // Convert to 0.0-1.0 range
+    });
 }
 
 probabilitySlider.addEventListener('input', updateProbability);
@@ -68,62 +70,152 @@ const speedValue = document.getElementById('speedValue');
 function updateSpeed() {
     const speed = speedSlider.value;
     speedValue.textContent = `${speed}ms`;
-    
-    // Send speed update to server
-    if (ws.readyState === WS_OPEN) {
-        ws.send(JSON.stringify({
-            type: 'speed',
-            value: speed / 1000.0  // Convert to seconds
-        }));
-    }
+    sendControlMessage({
+        type: 'speed',
+        value: speed / 1000.0  // Convert to seconds
+    });
 }
 
 speedSlider.addEventListener('input', updateSpeed);
 
 // Safe WebSocket open-state constant (some portal browsers don't expose WebSocket globally)
 const WS_OPEN = (typeof WebSocket !== 'undefined') ? WebSocket.OPEN : 1;
+const WS_RETRY_MS = 1500;
+const HTTP_POLL_MS = 1200;
 
 // --- WebSocket Connection ---
 const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-let ws;
-try {
-    ws = new WebSocket(`${protocol}://${window.location.host}`);
-} catch (e) {
-    // WebSocket not supported (e.g. captive portal mini-browser)
-    ws = { readyState: -1, send: () => {}, onopen: null, onclose: null, onerror: null, onmessage: null };
+let ws = null;
+let wsReconnectTimer = null;
+let statePollTimer = null;
+let usingHttpFallback = false;
+let knownProgramSignature = '';
+
+function setStatus(text, bg) {
+    statusDiv.textContent = text;
+    statusDiv.style.background = bg;
 }
 
-ws.onopen = () => {
-    statusDiv.textContent = 'Connected';
-    statusDiv.style.background = '#27ae60';
-    // Send initial values
-    if (probabilitySlider) updateProbability();
-    if (speedSlider) updateSpeed();
-};
-ws.onclose = () => {
-    statusDiv.textContent = 'Disconnected';
-    statusDiv.style.background = '#c0392b';
-};
-ws.onerror = (err) => {
-    console.error('WebSocket error:', err);
-    statusDiv.textContent = 'Error';
-    statusDiv.style.background = '#c0392b';
-};
+function programSignature(programs) {
+    return JSON.stringify((programs || []).map((p) => `${p.id}:${p.type}:${p.name}`));
+}
 
-ws.onmessage = (event) => {
-    let data;
-    try { data = JSON.parse(event.data); } catch { return; }
-
-    if (data.type === 'init') {
-        currentPrograms = data.programs || [];
+function applyProgramList(programs) {
+    const sig = programSignature(programs);
+    if (sig !== knownProgramSignature) {
+        currentPrograms = programs || [];
         renderProgramList();
+        knownProgramSignature = sig;
+    } else {
+        currentPrograms = programs || currentPrograms;
+    }
+}
+
+function handleServerMessage(data) {
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'init') {
+        applyProgramList(data.programs || []);
         updateActiveState(data.state, data.program);
     } else if (data.type === 'state') {
         updateActiveState(data.state, data.program);
     } else if (data.type === 'score') {
         snakeScore.textContent = data.value;
     }
-};
+}
+
+async function pollStateOnce() {
+    try {
+        const resp = await fetch('/api/state', { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        applyProgramList(data.programs || []);
+        updateActiveState(data.state, data.program);
+        if (usingHttpFallback) setStatus('Connected (HTTP)', '#27ae60');
+    } catch {
+        if (usingHttpFallback) setStatus('Disconnected', '#c0392b');
+    }
+}
+
+function startStatePolling() {
+    if (statePollTimer) return;
+    usingHttpFallback = true;
+    pollStateOnce();
+    statePollTimer = setInterval(pollStateOnce, HTTP_POLL_MS);
+}
+
+function stopStatePolling() {
+    if (!statePollTimer) return;
+    clearInterval(statePollTimer);
+    statePollTimer = null;
+}
+
+function scheduleWsReconnect() {
+    if (wsReconnectTimer) return;
+    wsReconnectTimer = setTimeout(() => {
+        wsReconnectTimer = null;
+        connectWebSocket();
+    }, WS_RETRY_MS);
+}
+
+function connectWebSocket() {
+    if (typeof WebSocket === 'undefined') {
+        startStatePolling();
+        setStatus('Connected (HTTP)', '#27ae60');
+        return;
+    }
+
+    try {
+        ws = new WebSocket(`${protocol}://${window.location.host}`);
+    } catch {
+        startStatePolling();
+        setStatus('Connected (HTTP)', '#27ae60');
+        return;
+    }
+
+    ws.onopen = () => {
+        usingHttpFallback = false;
+        stopStatePolling();
+        setStatus('Connected', '#27ae60');
+        if (probabilitySlider) updateProbability();
+        if (speedSlider) updateSpeed();
+    };
+    ws.onclose = () => {
+        setStatus('Reconnecting...', '#e67e22');
+        scheduleWsReconnect();
+        startStatePolling();
+    };
+    ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+    };
+    ws.onmessage = (event) => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        handleServerMessage(data);
+    };
+}
+
+async function sendControlMessage(payload) {
+    if (ws && ws.readyState === WS_OPEN) {
+        ws.send(JSON.stringify(payload));
+        return true;
+    }
+    try {
+        const resp = await fetch('/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) return false;
+        const out = await resp.json().catch(() => null);
+        if (out && out.state) {
+            updateActiveState(out.state, out.program);
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 // --- Program Selector ---
 function renderProgramList() {
@@ -146,15 +238,11 @@ function renderProgramList() {
 
 runBtn.addEventListener('click', () => {
     const id = programSelect.value;
-    if (id && ws.readyState === WS_OPEN) {
-        ws.send(JSON.stringify({ type: 'run_program', id }));
-    }
+    if (id) sendControlMessage({ type: 'run_program', id });
 });
 
 idleBtn.addEventListener('click', () => {
-    if (ws.readyState === WS_OPEN) {
-        ws.send(JSON.stringify({ type: 'run_program', id: 'idle' }));
-    }
+    sendControlMessage({ type: 'run_program', id: 'idle' });
     // Immediately restore idle UI and reset dropdown
     gridArea.style.display = '';
     snakeControls.style.display = 'none';
@@ -170,6 +258,7 @@ programSelect.addEventListener('change', () => {
     const showSnake = (programSelect.value === 'snake');
     gridArea.style.display = showSnake ? 'none' : '';
     snakeControls.style.display = showSnake ? 'flex' : 'none';
+    updateActiveState(currentState, currentProgramId);
 });
 
 function updateActiveState(state, programId) {
@@ -183,14 +272,20 @@ function updateActiveState(state, programId) {
     // Sync dropdown to the running program
     if (state === 'program' && programId) {
         programSelect.value = programId;
-    } else if (state === 'idle') {
-        programSelect.value = '';
     }
 
-    // Show sliders in idle and drawing states
-    setSliderVisibility(state === 'idle' || state === 'drawing');
-    setProgramToolsVisibility(state === 'program' && !!programId);
-    if (state !== 'program') hideSourceOverlay();
+    // UI mode:
+    // - running program -> source button visible, sliders hidden
+    // - idle + selected program (preview) -> source button visible, sliders hidden
+    // - otherwise (idle without selection or drawing) -> sliders visible
+    const selectedProgramId = programSelect.value || '';
+    const effectiveProgramId = (state === 'program' && programId) ? programId : selectedProgramId;
+    const showProgramTools = !!effectiveProgramId;
+    const showSliders = !showProgramTools && (state === 'idle' || state === 'drawing');
+    setSliderVisibility(showSliders);
+    setProgramToolsVisibility(showProgramTools);
+    setRunButtonVisibility(state === 'idle');
+    if (!showProgramTools) hideSourceOverlay();
 
     // Toggle snake UI vs normal display
     // Only show when snake is actively running, or pre-selected in idle
@@ -217,25 +312,103 @@ function hideSourceOverlay() {
 }
 
 async function loadSelectedProgramSource() {
-    if (currentState !== 'program' || !currentProgramId) return;
+    const selectedId = (currentState === 'program' && currentProgramId)
+        ? currentProgramId
+        : (programSelect.value || '');
+    if (!selectedId) return;
 
-    const meta = getProgramMetaById(currentProgramId);
-    sourceTitle.textContent = `Source: ${meta ? meta.name : currentProgramId}`;
+    const meta = getProgramMetaById(selectedId);
+    sourceTitle.textContent = `Source: ${meta ? meta.name : selectedId}`;
     sourceCode.textContent = 'Loading...';
+    sourceCode.removeAttribute('data-lang');
+    sourceCodePre.classList.remove('lang-python', 'lang-cstar');
     showSourceOverlay();
 
     try {
-        const resp = await fetch(`/api/program-source/${encodeURIComponent(currentProgramId)}`);
+        const resp = await fetch(`/api/program-source/${encodeURIComponent(selectedId)}`);
         if (!resp.ok) {
             const errJson = await resp.json().catch(() => ({}));
             throw new Error(errJson.error || `HTTP ${resp.status}`);
         }
         const payload = await resp.json();
         sourceTitle.textContent = `Source: ${payload.name}`;
-        sourceCode.textContent = payload.source || '';
+        sourceCode.innerHTML = highlightCode(payload.source || '', payload.type);
+        sourceCode.setAttribute('data-lang', payload.type || '');
+        sourceCodePre.classList.remove('lang-python', 'lang-cstar');
+        if (payload.type === 'python') sourceCodePre.classList.add('lang-python');
+        if (payload.type === 'cstar') sourceCodePre.classList.add('lang-cstar');
     } catch (err) {
         sourceCode.textContent = `Failed to load source.\n${err.message}`;
     }
+}
+
+function escapeHtml(s) {
+    return s
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+}
+
+function highlightCode(source, type) {
+    const keywords = type === 'python'
+        ? /\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b/g
+        : /\b(float|int|if|else|while|for|return)\b/g;
+    const constants = /\b[0-9]+(?:\.[0-9]+)?\b/g;
+
+    const src = source || '';
+    const lines = src.split('\n');
+    const out = [];
+
+    for (const line of lines) {
+        const commentPos = type === 'python' ? line.indexOf('#') : line.indexOf('//');
+        let codePart = line;
+        let commentPart = '';
+        if (commentPos >= 0) {
+            codePart = line.slice(0, commentPos);
+            commentPart = line.slice(commentPos);
+        }
+
+        const tokenized = [];
+        let i = 0;
+        while (i < codePart.length) {
+            const ch = codePart[i];
+            if (ch === '"' || ch === "'") {
+                const quote = ch;
+                let j = i + 1;
+                while (j < codePart.length) {
+                    if (codePart[j] === '\\') { j += 2; continue; }
+                    if (codePart[j] === quote) { j += 1; break; }
+                    j += 1;
+                }
+                const lit = codePart.slice(i, j);
+                tokenized.push(`<span class="tok-string">${escapeHtml(lit)}</span>`);
+                i = j;
+                continue;
+            }
+            let j = i;
+            while (j < codePart.length && codePart[j] !== '"' && codePart[j] !== "'") {
+                j += 1;
+            }
+            const plain = codePart.slice(i, j);
+            tokenized.push(highlightPlainCode(plain, keywords, constants));
+            i = j;
+        }
+
+        let colored = tokenized.join('');
+        if (commentPart) {
+            colored += `<span class="tok-comment">${escapeHtml(commentPart)}</span>`;
+        }
+        out.push(colored);
+    }
+
+    return out.join('\n');
+}
+
+function highlightPlainCode(plain, keywords, constants) {
+    let s = escapeHtml(plain);
+    s = s.replace(constants, '<span class="tok-number">$&</span>');
+    s = s.replace(keywords, '<span class="tok-keyword">$&</span>');
+    return s;
 }
 
 // --- Grid Creation ---
@@ -296,8 +469,7 @@ function handleDraw(clientX, clientY) {
     if (element && element.classList.contains('led') && element !== lastLedElement) {
         const x = parseInt(element.dataset.x);
         const y = parseInt(element.dataset.y);
-        
-        ws.send(JSON.stringify({ type: 'draw', x, y }));
+        sendControlMessage({ type: 'draw', x, y });
         
         element.classList.add('drawn-on');
         lastLedElement = element;
@@ -333,6 +505,8 @@ function draw(e) {
 
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
+    setStatus('Connecting...', '#333');
+    connectWebSocket();
     createFullDisplay();
 
     // Add event listeners only to the LED grid container
@@ -350,9 +524,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // --- Snake Controls ---
     function sendDirection(dir) {
-        if (ws.readyState === WS_OPEN) {
-            ws.send(JSON.stringify({ type: 'direction', value: dir }));
-        }
+        sendControlMessage({ type: 'direction', value: dir });
     }
 
     document.getElementById('btnUp').addEventListener('click', () => sendDirection('up'));

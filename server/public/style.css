@@ -404,6 +404,24 @@ h1 {
   white-space: pre;
 }
 
+.source-pre .tok-keyword {
+  color: #5cb7ff;
+  font-weight: 600;
+}
+
+.source-pre .tok-string {
+  color: #d4b06a;
+}
+
+.source-pre .tok-number {
+  color: #74d1a0;
+}
+
+.source-pre .tok-comment {
+  color: #7f8b97;
+  font-style: italic;
+}
+
 /* --- Snake Controls --- */
 .snake-controls {
   display: flex;

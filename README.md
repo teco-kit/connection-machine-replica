@@ -106,17 +106,18 @@ If you also run captive portal AP mode, `wlan0` is typically on `192.168.4.1`
 
 ### Android captive portal stability (Pixel and newer Android versions)
 
-Modern Android validates both HTTP and HTTPS. If HTTPS validation succeeds
-upstream, the captive portal window can close automatically.
-
-To keep the local portal stable, `server/server.js` now enforces a "local-only"
-AP policy at startup (when running as root on Linux):
-- Blocks forwarded traffic from AP clients on ports `80`, `443`, and `853`
-- Keeps access to the Pi local portal (`http://192.168.4.1/`) intact
-- Prevents Android from validating upstream internet and dismissing the portal
+Modern Android captive portal apps can drop WebSocket connections and can also
+churn when probe URLs are repeatedly redirected. The current setup addresses
+both:
+- Captive probe endpoints are handled in a stable way (reduced redirect churn
+  after the portal is already open for that client).
+- The web UI automatically falls back to HTTP polling/control if WebSocket is
+  unavailable in the captive portal webview.
+- Optional AP firewall lockdown can be enabled if Android still dismisses the
+  portal because upstream HTTPS validation succeeds.
 
 Runtime env vars:
-- `CAPTIVE_LOCKDOWN=0` disables this firewall lockdown
+- `CAPTIVE_LOCKDOWN=1` enables AP firewall lockdown (disabled by default)
 - `CAPTIVE_AP_IFACE=<iface>` changes AP interface (default: `wlan0`)
 
 Example systemd override:
