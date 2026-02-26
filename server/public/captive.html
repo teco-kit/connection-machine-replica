@@ -174,7 +174,7 @@
       </div>
       <pre id="sourceCode" class="source" style="display:none;"></pre>
       <div class="better-wrap">
-        <div class="better-title">If you want a better experience, go to your browser and open the address below, or scan the QR code. Then you can also play Snake on the Connection Machine. You must stay connected to the <b>Connection Machine</b> WiFi, otherwise the QR code link will not work.</div>
+        <div class="better-title">If you want a better experience, go to your browser and open the address below, or scan the QR code. Then you can also play Snake on the Connection Machine. You must stay connected to the <b>Connection Machine</b> WiFi, otherwise the QR Code or the address below wont work.</div>
         <div class="ip-row">
           <div id="ipCode" class="ip-code"></div>
         </div>
@@ -202,8 +202,7 @@
     const qrImg = document.getElementById('qrImg');
 
     const FULL_URL = window.location.origin + '/';
-    const FULL_HOST = window.location.host;
-    const FULL_IP_URL = `http://${FULL_HOST}/`;
+    let FULL_IP_URL = FULL_URL;
     ipCode.textContent = FULL_IP_URL;
     qrImg.src = '/api/qr-full.svg';
 
@@ -330,6 +329,16 @@
       }
     }
 
+    async function refreshPortalAddress() {
+      try {
+        const p = await api('/api/portal-address');
+        if (p && p.url) {
+          FULL_IP_URL = p.url;
+          ipCode.textContent = FULL_IP_URL;
+        }
+      } catch {}
+    }
+
     async function sendControl(payload) {
       try {
         const out = await api('/api/control', 'POST', payload);
@@ -386,6 +395,7 @@
     });
 
     // Init
+    refreshPortalAddress();
     refreshState();
     setInterval(refreshState, 1300);
   </script>

@@ -628,6 +628,12 @@ app.get('/api/state', (req, res) => {
     });
 });
 
+app.get('/api/portal-address', (req, res) => {
+    setNoCacheHeaders(res);
+    const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
+    res.json({ url: `http://${localIp}/` });
+});
+
 app.post('/api/control', (req, res) => {
     const parsed = req.body;
     if (!parsed || typeof parsed !== 'object') {
