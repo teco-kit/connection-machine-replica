@@ -119,7 +119,7 @@
     }
     .ip-row {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr;
       gap: 6px;
       align-items: center;
     }
@@ -130,11 +130,6 @@
       padding: 7px;
       color: #b5c7d8;
       background: #0a0f15;
-    }
-    .copy-btn {
-      min-height: 32px;
-      padding: 6px 8px;
-      font-size: .62rem;
     }
     .qr-wrap {
       display: grid;
@@ -179,10 +174,9 @@
       </div>
       <pre id="sourceCode" class="source" style="display:none;"></pre>
       <div class="better-wrap">
-        <div class="better-title">If you want a better experience, go to your browser and open the address below, or scan the QR code. Then you can also play Snake on the Connection Machine.</div>
+        <div class="better-title">If you want a better experience, go to your browser and open the address below, or scan the QR code. Then you can also play Snake on the Connection Machine. You must stay connected to the <b>Connection Machine</b> WiFi, otherwise the QR code link will not work.</div>
         <div class="ip-row">
           <div id="ipCode" class="ip-code"></div>
-          <button id="copyIpBtn" class="copy-btn">Copy</button>
         </div>
         <div class="qr-wrap">
           <img id="qrImg" src="/api/qr-full.svg" alt="QR code to open full website">
@@ -204,7 +198,6 @@
     const sourceBtnWrap = document.getElementById('sourceBtnWrap');
     const sourceBtn = document.getElementById('sourceBtn');
     const sourceCode = document.getElementById('sourceCode');
-    const copyIpBtn = document.getElementById('copyIpBtn');
     const ipCode = document.getElementById('ipCode');
     const qrImg = document.getElementById('qrImg');
 
@@ -390,16 +383,6 @@
       }
       sourceCode.style.display = '';
       sourceBtn.textContent = 'Hide Source';
-    });
-
-    copyIpBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(FULL_IP_URL);
-        copyIpBtn.textContent = 'Copied';
-      } catch {
-        copyIpBtn.textContent = 'Copy failed';
-      }
-      setTimeout(() => { copyIpBtn.textContent = 'Copy'; }, 1200);
     });
 
     // Init
