@@ -426,6 +426,22 @@ function requestHost(req) {
     return hostHeader.split(':')[0].replace(/^\[/, '').replace(/\]$/, '');
 }
 
+function userAgent(req) {
+    return req.headers['user-agent'] || '';
+}
+
+function isIOSUserAgent(ua) {
+    return /iPhone|iPad|iPod|CaptiveNetworkSupport/i.test(ua || '');
+}
+
+function portalPathForRequest(req) {
+    const ua = userAgent(req);
+    // iOS captive browser can handle the full UI reliably.
+    if (isIOSUserAgent(ua)) return '/';
+    // Android and everything else use the lightweight captive page.
+    return '/captive';
+}
+
 function isLocalPortalHost(req) {
     const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
     const host = requestHost(req);
@@ -468,7 +484,7 @@ function portalRedirect(req, res) {
     const ip = requestClientIp(req);
     if (ip) portalSessions.set(ip, Date.now());
     setNoCacheHeaders(res);
-    res.redirect(302, `http://${localIp}/captive`);
+    res.redirect(302, `http://${localIp}${portalPathForRequest(req)}`);
 }
 
 function portalPage(req, res) {
@@ -476,17 +492,18 @@ function portalPage(req, res) {
     if (ip) portalSessions.set(ip, Date.now());
     markPortalSession(req);
     setNoCacheHeaders(res);
-    res.sendFile(path.join(__dirname, 'public', 'captive.html'));
+    const page = portalPathForRequest(req) === '/' ? 'index.html' : 'captive.html';
+    res.sendFile(path.join(__dirname, 'public', page));
 }
 
 function portalProbeResponse(req, res) {
-    const userAgent = req.headers['user-agent'] || '';
+    const ua = userAgent(req);
     const accept = req.headers.accept || '';
-    const isCaptiveWebView = /Android/i.test(userAgent) && /\bwv\b/i.test(userAgent) && accept.includes('text/html');
+    const isCaptiveWebView = /Android/i.test(ua) && /\bwv\b/i.test(ua) && accept.includes('text/html');
 
     if (CAPTIVE_DEBUG) {
         const ip = requestClientIp(req);
-        console.log(`[captive-probe] ip=${ip} path=${req.path} host=${requestHost(req)} accept=${accept} ua=${userAgent}`);
+        console.log(`[captive-probe] ip=${ip} path=${req.path} host=${requestHost(req)} accept=${accept} ua=${ua}`);
     }
 
     // Requests from Android captive webview should get the full portal page.

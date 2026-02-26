@@ -70,9 +70,11 @@ h1 {
 .program-tools {
   width: 100%;
   z-index: 10;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 42px;
+  visibility: hidden;
 }
 
 .controls {
@@ -261,6 +263,7 @@ h1 {
   justify-content: center;
   gap: 8px;
   width: 100%;
+  min-height: 42px;
 }
 
 #programSelect {
@@ -297,6 +300,10 @@ h1 {
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
+}
+
+.program-selector .action-btn {
+  min-width: 108px;
 }
 
 .action-btn:active {

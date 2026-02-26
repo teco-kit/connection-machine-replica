@@ -27,12 +27,14 @@ function setSliderVisibility(visible) {
 
 function setProgramToolsVisibility(visible) {
     if (!programTools) return;
-    programTools.style.display = visible ? 'flex' : 'none';
+    programTools.style.visibility = visible ? 'visible' : 'hidden';
+    programTools.style.pointerEvents = visible ? 'auto' : 'none';
 }
 
 function setRunButtonVisibility(visible) {
     if (!runBtn) return;
-    runBtn.style.display = visible ? '' : 'none';
+    runBtn.style.visibility = visible ? 'visible' : 'hidden';
+    runBtn.style.pointerEvents = visible ? 'auto' : 'none';
 }
 
 const NUM_CUBES_X = 2;

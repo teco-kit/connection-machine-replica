@@ -29,19 +29,21 @@
       color: var(--text);
       font-family: "Orbitron", system-ui, sans-serif;
       min-height: 100%;
+      height: 100%;
+      overflow: auto;
     }
     .app {
       width: min(720px, 100%);
       margin: 0 auto;
-      padding: 14px;
+      padding: 8px;
       display: grid;
-      gap: 12px;
+      gap: 8px;
     }
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 12px;
+      padding: 10px;
     }
     h1 {
       margin: 0 0 6px;
@@ -51,17 +53,18 @@
     .sub { font-size: .75rem; color: var(--muted); }
     .status {
       display: inline-block;
-      padding: 5px 10px;
+      padding: 3px 8px;
       border-radius: 10px;
-      font-size: .72rem;
+      font-size: .62rem;
       background: #2b3b52;
+      white-space: nowrap;
     }
     .row {
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: center;
-      margin-top: 10px;
+      margin-top: 8px;
     }
     .row.controls {
       grid-template-columns: auto 1fr auto;
@@ -74,17 +77,17 @@
       border: 1px solid var(--btn-border);
       border-radius: 10px;
       background: var(--btn);
-      padding: 9px 10px;
-      min-height: 42px;
+      padding: 7px 9px;
+      min-height: 38px;
     }
     button:active { background: var(--btn-active); }
-    .sliders { display: grid; gap: 8px; margin-top: 10px; }
-    .slider-line { display: grid; grid-template-columns: 70px 1fr 52px; gap: 8px; align-items: center; font-size: .72rem; color: var(--muted); }
+    .sliders { display: grid; gap: 6px; margin-top: 8px; }
+    .slider-line { display: grid; grid-template-columns: 62px 1fr 48px; gap: 6px; align-items: center; font-size: .68rem; color: var(--muted); }
     input[type="range"] { width: 100%; }
     .source-btn-wrap { margin-top: 10px; }
     .source {
-      margin-top: 10px;
-      max-height: 46vh;
+      margin-top: 8px;
+      max-height: 38vh;
       overflow: auto;
       border: 1px solid #2a3648;
       border-radius: 10px;
