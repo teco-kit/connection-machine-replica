@@ -260,6 +260,7 @@ programSelect.addEventListener('change', () => {
 });
 
 function updateActiveState(state, programId) {
+    const prevState = currentState;
     currentState = state;
     currentProgramId = programId;
 
@@ -270,6 +271,9 @@ function updateActiveState(state, programId) {
     // Sync dropdown to the running program
     if (state === 'program' && programId) {
         programSelect.value = programId;
+    } else if (state === 'idle' && prevState === 'program') {
+        // Program ended (e.g. snake game over): restore default idle selection.
+        programSelect.value = '';
     }
 
     // UI mode:

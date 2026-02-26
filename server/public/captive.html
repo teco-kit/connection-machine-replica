@@ -301,6 +301,7 @@
     }
 
     function updateUi(state, program) {
+      const prevState = currentState;
       currentState = state || 'idle';
       currentProgram = program || null;
       const selected = programSelect.value || '';
@@ -311,6 +312,8 @@
       runBtn.style.display = currentState === 'idle' ? '' : 'none';
       if (currentState === 'program' && currentProgram) {
         programSelect.value = currentProgram;
+      } else if (currentState === 'idle' && prevState === 'program') {
+        programSelect.value = '';
       }
       if (!showProgramTools) {
         sourceCode.style.display = 'none';
