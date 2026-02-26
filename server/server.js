@@ -2,13 +2,66 @@ const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const net = require('net');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 // --- Configuration ---
 const HTTP_PORT = 80;
 const TCP_PORT = 1337;
+const CAPTIVE_AP_IFACE = process.env.CAPTIVE_AP_IFACE || 'wlan0';
+const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN !== '0';
+
+function ensureIptablesRule(ruleArgs) {
+    const check = spawnSync('iptables', ['-C', ...ruleArgs], { stdio: 'ignore' });
+    if (check.status === 0) return true;
+
+    const add = spawnSync('iptables', ['-I', ...ruleArgs], { stdio: 'pipe' });
+    if (add.status !== 0) {
+        const stderr = (add.stderr || '').toString().trim();
+        console.warn(`[captive-lockdown] Failed to add iptables rule: ${ruleArgs.join(' ')}`);
+        if (stderr) console.warn(`[captive-lockdown] ${stderr}`);
+        return false;
+    }
+    return true;
+}
+
+function enforceCaptiveLockdown() {
+    if (!CAPTIVE_LOCKDOWN) return;
+    if (process.platform !== 'linux') return;
+
+    const iptablesProbe = spawnSync('iptables', ['--version'], { stdio: 'ignore' });
+    if (iptablesProbe.status !== 0) {
+        console.warn('[captive-lockdown] iptables not available; skipping firewall lockdown.');
+        return;
+    }
+
+    const ifacePath = `/sys/class/net/${CAPTIVE_AP_IFACE}`;
+    if (!fs.existsSync(ifacePath)) {
+        console.log(`[captive-lockdown] Interface ${CAPTIVE_AP_IFACE} not found; skipping firewall lockdown.`);
+        return;
+    }
+
+    // Keep AP clients on the local portal by blocking forwarded web validation
+    // traffic to upstream networks. Requests to the Pi itself are INPUT traffic
+    // and remain reachable (portal on :80, DNS/DHCP via dnsmasq).
+    const rules = [
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '80', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '443', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '443', '-j', 'REJECT'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'tcp', '--dport', '853', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
+        ['FORWARD', '-i', CAPTIVE_AP_IFACE, '-p', 'udp', '--dport', '853', '-j', 'REJECT'],
+    ];
+
+    let addedAny = false;
+    for (const rule of rules) {
+        const ok = ensureIptablesRule(rule);
+        addedAny = addedAny || ok;
+    }
+    if (addedAny) {
+        console.log(`[captive-lockdown] Active on ${CAPTIVE_AP_IFACE} (forwarded 80/443/853 blocked).`);
+    }
+}
 
 // --- Logging ---
 const LOG_DIR = path.join(__dirname, 'log');
@@ -284,8 +337,18 @@ const app = express();
 // Helper: issue an absolute 302 redirect to our portal root.
 // Using the IP from the incoming socket ensures the captive portal browser
 // can reach us (the Host header may contain a foreign hostname).
+function setNoCacheHeaders(res) {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
+        'Surrogate-Control': 'no-store',
+    });
+}
+
 function portalRedirect(req, res) {
     const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
+    setNoCacheHeaders(res);
     res.redirect(302, `http://${localIp}/`);
 }
 
@@ -304,16 +367,19 @@ app.get(['/hotspot-detect.html', '/library/test/success.html', '/success.html'],
 // that HTTPS check reaches real Google and returns 204, which can dismiss the
 // portal on modern devices. The HTTP checks below catch connections where the
 // DNS/firewall routes all HTTP traffic to us.
-app.get([
+app.all([
     '/generate_204',
     '/gen_204',
+    '/www.google.com/gen_204',
+    '/www.gstatic.com/generate_204',
+    '/play.googleapis.com/generate_204',
     '/clients3.google.com/generate_204',
     '/connectivitycheck.gstatic.com/generate_204',
     '/connectivitycheck.android.com/generate_204',
 ], (req, res) => portalRedirect(req, res));
 
 // Samsung-specific detection
-app.get([
+app.all([
     '/connectivitycheck.samsung.com/generate_204',
     '/wifi.samsung.com/generate_204',
     '/samsung.com/generate_204',
@@ -321,8 +387,8 @@ app.get([
 ], (req, res) => portalRedirect(req, res));
 
 // Xiaomi / MIUI
-app.get('/generate204', (req, res) => portalRedirect(req, res));
-app.get('/miui/v5/redirect', (req, res) => portalRedirect(req, res));
+app.all('/generate204', (req, res) => portalRedirect(req, res));
+app.all('/miui/v5/redirect', (req, res) => portalRedirect(req, res));
 
 // Windows NCSI: expects exact strings, otherwise shows "No Internet" banner.
 // A redirect here also triggers the captive portal notification on Windows.
@@ -339,9 +405,11 @@ app.get('/check_network_status.txt', (req, res) => portalRedirect(req, res));
 // this since they go directly to Google's servers over port 443.
 app.use((req, res, next) => {
     const localIp = req.socket.localAddress.replace(/^::ffff:/, '');
-    const host = (req.headers.host || '').split(':')[0];
+    const hostHeader = (req.headers.host || '').trim().toLowerCase();
+    const host = hostHeader.split(':')[0].replace(/^\[/, '').replace(/\]$/, '');
     // Also allow hostname-style access (e.g. "raspberrypi.local")
-    if (host && host !== localIp && host !== 'localhost' && !host.endsWith('.local')) {
+    const hostAllowed = host === localIp || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+    if (!hostAllowed) {
         return portalRedirect(req, res);
     }
     next();
@@ -351,7 +419,44 @@ app.get('/api/programs', (req, res) => {
     res.json(getAvailablePrograms());
 });
 
+app.get('/api/program-source/:id', (req, res) => {
+    const id = req.params.id;
+    if (!id || id === 'idle') {
+        return res.status(400).json({ error: 'Invalid program id' });
+    }
+
+    const available = getAvailablePrograms();
+    const program = available.find((p) => p.id === id);
+    if (!program) {
+        return res.status(404).json({ error: 'Program not found' });
+    }
+
+    let sourcePath;
+    if (program.type === 'cstar') {
+        const baseName = id.replace(/^cstar:/, '');
+        sourcePath = path.join(CSTAR_DIR, `${baseName}.cstar`);
+    } else if (program.type === 'python') {
+        sourcePath = path.join(PROGRAMS_DIR, `${id}.py`);
+    } else {
+        return res.status(400).json({ error: 'Source not available for this program type' });
+    }
+
+    try {
+        const source = fs.readFileSync(sourcePath, 'utf8');
+        res.json({
+            id,
+            name: program.name,
+            type: program.type,
+            path: sourcePath,
+            source,
+        });
+    } catch (err) {
+        res.status(500).json({ error: `Failed to read source: ${err.message}` });
+    }
+});
+
 app.get('/', (req, res) => {
+    setNoCacheHeaders(res);
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -486,6 +591,8 @@ function main() {
         }
         process.exit(1);
     });
+
+    enforceCaptiveLockdown();
 
     httpServer.listen(HTTP_PORT, '0.0.0.0', () => console.log(`HTTP server on http://0.0.0.0:${HTTP_PORT}`));
     tcpServer.listen(TCP_PORT,  '0.0.0.0', () => console.log(`TCP server on port ${TCP_PORT}`));

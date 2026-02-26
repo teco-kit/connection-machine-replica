@@ -67,6 +67,14 @@ h1 {
   gap: 15px;
 }
 
+.program-tools {
+  width: 100%;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
 .controls {
   display: flex;
   align-items: center;
@@ -329,6 +337,71 @@ h1 {
   background: #c0392b;
   color: #fff;
   border-color: #e74c3c;
+}
+
+.action-btn.source {
+  border-color: #2a4e6b;
+  color: #8cc8f3;
+}
+
+.action-btn.source:hover,
+.action-btn.source:active {
+  background: #152a3a;
+  color: #b7ddf8;
+  border-color: #467fa8;
+}
+
+.source-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.74);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.source-overlay.hidden {
+  display: none;
+}
+
+.source-modal {
+  width: min(980px, 100%);
+  height: min(88vh, 900px);
+  background: #0f1114;
+  border: 1px solid #2e3a46;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #27323d;
+}
+
+.source-title {
+  font-size: 0.8rem;
+  color: #9eb2c4;
+}
+
+.source-pre {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #d9e5f0;
+  white-space: pre;
 }
 
 /* --- Snake Controls --- */

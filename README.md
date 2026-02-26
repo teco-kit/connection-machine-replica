@@ -104,6 +104,34 @@ hostname -I
 If you also run captive portal AP mode, `wlan0` is typically on `192.168.4.1`
 (hostapd + dnsmasq), while deployment/maintenance should use `eth0`.
 
+### Android captive portal stability (Pixel and newer Android versions)
+
+Modern Android validates both HTTP and HTTPS. If HTTPS validation succeeds
+upstream, the captive portal window can close automatically.
+
+To keep the local portal stable, `server/server.js` now enforces a "local-only"
+AP policy at startup (when running as root on Linux):
+- Blocks forwarded traffic from AP clients on ports `80`, `443`, and `853`
+- Keeps access to the Pi local portal (`http://192.168.4.1/`) intact
+- Prevents Android from validating upstream internet and dismissing the portal
+
+Runtime env vars:
+- `CAPTIVE_LOCKDOWN=0` disables this firewall lockdown
+- `CAPTIVE_AP_IFACE=<iface>` changes AP interface (default: `wlan0`)
+
+Example systemd override:
+
+```bash
+sudo systemctl edit --full ConnectionMachine_Server.service
+```
+
+Add under `[Service]` if needed:
+
+```ini
+Environment=CAPTIVE_AP_IFACE=wlan0
+Environment=CAPTIVE_LOCKDOWN=1
+```
+
 ### 2) Install runtime dependencies
 
 Install Node.js, Python and build tools:

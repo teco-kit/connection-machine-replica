@@ -9,6 +9,12 @@ const snakeControls = document.getElementById('snakeControls');
 const snakeScore = document.getElementById('snakeScore');
 const workloadLabel = document.querySelector('.workload-label');
 const speedLabel = document.querySelector('.speed-label');
+const programTools = document.getElementById('programTools');
+const viewSourceBtn = document.getElementById('viewSourceBtn');
+const sourceOverlay = document.getElementById('sourceOverlay');
+const closeSourceBtn = document.getElementById('closeSourceBtn');
+const sourceTitle = document.getElementById('sourceTitle');
+const sourceCode = document.getElementById('sourceCode');
 
 function setSliderVisibility(visible) {
     // Use visibility (not display) so sliders always reserve their space
@@ -16,6 +22,11 @@ function setSliderVisibility(visible) {
     const v = visible ? 'visible' : 'hidden';
     if (workloadLabel) workloadLabel.style.visibility = v;
     if (speedLabel) speedLabel.style.visibility = v;
+}
+
+function setProgramToolsVisibility(visible) {
+    if (!programTools) return;
+    programTools.style.display = visible ? 'flex' : 'none';
 }
 
 const NUM_CUBES_X = 2;
@@ -117,6 +128,11 @@ ws.onmessage = (event) => {
 // --- Program Selector ---
 function renderProgramList() {
     programSelect.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '-- choose program to run --';
+    programSelect.appendChild(placeholder);
+
     for (const prog of currentPrograms) {
         if (prog.id === 'idle') continue; // idle has its own button
         const opt = document.createElement('option');
@@ -125,6 +141,7 @@ function renderProgramList() {
         if (prog.type === 'cstar') opt.textContent = '🗄️ ' + prog.name;
         programSelect.appendChild(opt);
     }
+    programSelect.value = '';
 }
 
 runBtn.addEventListener('click', () => {
@@ -142,8 +159,10 @@ idleBtn.addEventListener('click', () => {
     gridArea.style.display = '';
     snakeControls.style.display = 'none';
     setSliderVisibility(true);
-    // Reset dropdown so pre-run snake check doesn't re-show controls
-    if (currentPrograms.length > 1) programSelect.selectedIndex = 0;
+    setProgramToolsVisibility(false);
+    hideSourceOverlay();
+    // Reset dropdown so no previous program appears selected in idle
+    programSelect.value = '';
 });
 
 programSelect.addEventListener('change', () => {
@@ -164,13 +183,14 @@ function updateActiveState(state, programId) {
     // Sync dropdown to the running program
     if (state === 'program' && programId) {
         programSelect.value = programId;
+    } else if (state === 'idle') {
+        programSelect.value = '';
     }
 
     // Show sliders in idle and drawing states
     setSliderVisibility(state === 'idle' || state === 'drawing');
-
-    // When returning to idle, reset dropdown FIRST so the preview check below is correct
-    if (state === 'idle') programSelect.selectedIndex = 0;
+    setProgramToolsVisibility(state === 'program' && !!programId);
+    if (state !== 'program') hideSourceOverlay();
 
     // Toggle snake UI vs normal display
     // Only show when snake is actively running, or pre-selected in idle
@@ -180,6 +200,42 @@ function updateActiveState(state, programId) {
     gridArea.style.display = showSnake ? 'none' : '';
     snakeControls.style.display = showSnake ? 'flex' : 'none';
     if (isSnake) snakeScore.textContent = '0';
+}
+
+function getProgramMetaById(id) {
+    return currentPrograms.find((p) => p.id === id) || null;
+}
+
+function showSourceOverlay() {
+    sourceOverlay.classList.remove('hidden');
+    sourceOverlay.setAttribute('aria-hidden', 'false');
+}
+
+function hideSourceOverlay() {
+    sourceOverlay.classList.add('hidden');
+    sourceOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function loadSelectedProgramSource() {
+    if (currentState !== 'program' || !currentProgramId) return;
+
+    const meta = getProgramMetaById(currentProgramId);
+    sourceTitle.textContent = `Source: ${meta ? meta.name : currentProgramId}`;
+    sourceCode.textContent = 'Loading...';
+    showSourceOverlay();
+
+    try {
+        const resp = await fetch(`/api/program-source/${encodeURIComponent(currentProgramId)}`);
+        if (!resp.ok) {
+            const errJson = await resp.json().catch(() => ({}));
+            throw new Error(errJson.error || `HTTP ${resp.status}`);
+        }
+        const payload = await resp.json();
+        sourceTitle.textContent = `Source: ${payload.name}`;
+        sourceCode.textContent = payload.source || '';
+    } catch (err) {
+        sourceCode.textContent = `Failed to load source.\n${err.message}`;
+    }
 }
 
 // --- Grid Creation ---
@@ -332,4 +388,17 @@ window.addEventListener('DOMContentLoaded', () => {
             sendDirection(dy > 0 ? 'down' : 'up');
         }
     }, { passive: true });
+
+    viewSourceBtn.addEventListener('click', () => {
+        loadSelectedProgramSource();
+    });
+    closeSourceBtn.addEventListener('click', hideSourceOverlay);
+    sourceOverlay.addEventListener('click', (e) => {
+        if (e.target === sourceOverlay) hideSourceOverlay();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !sourceOverlay.classList.contains('hidden')) {
+            hideSourceOverlay();
+        }
+    });
 });

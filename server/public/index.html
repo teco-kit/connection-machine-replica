@@ -44,6 +44,9 @@
             <span id="speedValue">150ms</span>
           </div>
         </div>
+        <div class="program-tools" id="programTools">
+          <button class="action-btn source" id="viewSourceBtn">View Source</button>
+        </div>
       </div>
       <div class="grid-area">
         <div class="instruction">
@@ -65,6 +68,16 @@
         <button class="dpad-btn down" id="btnDown">&#9660;</button>
       </div>
       <div class="snake-hint">Use buttons or swipe to steer</div>
+    </div>
+  </div>
+
+  <div class="source-overlay hidden" id="sourceOverlay" aria-hidden="true">
+    <div class="source-modal">
+      <div class="source-header">
+        <div class="source-title" id="sourceTitle">Program Source</div>
+        <button class="action-btn idle" id="closeSourceBtn">Close</button>
+      </div>
+      <pre class="source-pre"><code id="sourceCode"></code></pre>
     </div>
   </div>
 
