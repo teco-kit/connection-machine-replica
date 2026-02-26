@@ -10,7 +10,7 @@ const fs = require('fs');
 const HTTP_PORT = 80;
 const TCP_PORT = 1337;
 const CAPTIVE_AP_IFACE = process.env.CAPTIVE_AP_IFACE || 'wlan0';
-const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN === '1';
+const CAPTIVE_LOCKDOWN = process.env.CAPTIVE_LOCKDOWN !== '0';
 const PORTAL_SESSION_TTL_MS = 30 * 60 * 1000;
 const portalSessions = new Map(); // ip -> last active timestamp (ms)
 
@@ -463,11 +463,19 @@ function portalPage(req, res) {
 }
 
 function portalProbeResponse(req, res) {
-    // Once a client already opened the portal recently, serve the portal page
-    // directly for probe URLs. This avoids redirect churn and keeps Android on
-    // a usable CM2 UI instead of a probe-text page.
+    const acceptsHtml = (req.headers.accept || '').includes('text/html');
+
+    // For real captive-browser page loads, keep directing to the actual portal.
+    if (acceptsHtml) {
+        return portalRedirect(req, res);
+    }
+
+    // For background/system probes after the portal is already active, return a
+    // lightweight 200 response. This avoids repeatedly loading the full UI
+    // (which would create rapid WS connect/disconnect churn).
     if (hasFreshPortalSession(req)) {
-        return portalPage(req, res);
+        setNoCacheHeaders(res);
+        return res.status(200).type('text/plain').send('CM2 captive portal active');
     }
     return portalRedirect(req, res);
 }

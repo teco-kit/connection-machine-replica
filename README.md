@@ -117,7 +117,7 @@ both:
   portal because upstream HTTPS validation succeeds.
 
 Runtime env vars:
-- `CAPTIVE_LOCKDOWN=1` enables AP firewall lockdown (disabled by default)
+- `CAPTIVE_LOCKDOWN=0` disables AP firewall lockdown (enabled by default)
 - `CAPTIVE_AP_IFACE=<iface>` changes AP interface (default: `wlan0`)
 
 Example systemd override:
