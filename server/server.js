@@ -456,12 +456,18 @@ function portalRedirect(req, res) {
     res.redirect(302, `http://${localIp}/`);
 }
 
+function portalPage(req, res) {
+    markPortalSession(req);
+    setNoCacheHeaders(res);
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+}
+
 function portalProbeResponse(req, res) {
-    // Once a client already opened the portal recently, avoid repeated redirects
-    // for probe URLs. This prevents churn in Android captive portal webviews.
+    // Once a client already opened the portal recently, serve the portal page
+    // directly for probe URLs. This avoids redirect churn and keeps Android on
+    // a usable CM2 UI instead of a probe-text page.
     if (hasFreshPortalSession(req)) {
-        setNoCacheHeaders(res);
-        return res.status(200).type('text/plain').send('CM2 captive portal active');
+        return portalPage(req, res);
     }
     return portalRedirect(req, res);
 }
